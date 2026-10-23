@@ -5,7 +5,6 @@ use unic_langid::LanguageIdentifier;
 
 mod input;
 mod model;
-mod output;
 
 #[derive(Parser)]
 #[command(name = "cldr-musl-extractor")]
