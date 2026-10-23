@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use clap::Parser;
+use unic_langid::LanguageIdentifier;
 
 mod input;
 mod model;
@@ -17,8 +18,17 @@ pub struct Args {
 async fn main() {
     let args = Args::parse();
 
-    // TODO: Extract region and language
-    let locale = input::get_locale_data("", "")
+    let parsed_langid: LanguageIdentifier = args
+        .target
+        .parse()
+        .expect("Failed to parse input as language identifier");
+
+    let region = parsed_langid
+        .region
+        .map(|r| r.as_str().to_string())
+        .unwrap_or("".to_string());
+
+    let locale = input::get_locale_data(parsed_langid.language.as_str(), &region)
         .await
         .expect("Failed to get locale data");
 
