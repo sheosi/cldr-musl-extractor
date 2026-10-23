@@ -1,6 +1,7 @@
 use crate::model::{Model, ModelMessages, ModelMonetary, ModelNumeric, ModelTime};
-use anyhow::{Result, anyhow};
-use roxmltree::Document;
+use anyhow::{Context, Result, anyhow};
+use reqwest::StatusCode;
+use roxmltree::{Document, ParsingOptions};
 
 pub async fn get_locale_data(language: &str, region: &str) -> Result<Model> {
     let tree_set_str = TreeSetStr::get(language, region).await?;
@@ -20,11 +21,11 @@ impl TreeSetStr {
             "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/main/{language}.xml"
         );
         let reg_url = format!(
-            "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/main/{language}-{region}.xml"
+            "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/main/{language}_{region}.xml"
         );
 
         const SUPPLEMENTAL_URL: &str = "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/supplemental/supplementalData.xml";
-        const MAIN_ROOT_URL: &str = "https://github.com/unicode-org/cldr/raw/96e54b273d2da4ec6fbad350ba19ff23fa24a588/common/main/root.xml";
+        const MAIN_ROOT_URL: &str = "https://raw.githubusercontent.com/unicode-org/cldr/96e54b273d2da4ec6fbad350ba19ff23fa24a588/common/main/root.xml";
 
         Ok(TreeSetStr {
             suplemental_data: get_text(SUPPLEMENTAL_URL).await?,
@@ -35,11 +36,22 @@ impl TreeSetStr {
     }
 
     fn parse<'a>(&'a self) -> Result<TreeSetDoc<'a>> {
+        fn parse_xml<'a>(xml: &'a str) -> Result<Document<'a>> {
+            Ok(Document::parse_with_options(
+                xml,
+                ParsingOptions {
+                    allow_dtd: true,
+                    ..Default::default()
+                },
+            )?)
+        }
+
         Ok(TreeSetDoc {
-            suplemental_data: Document::parse(&self.suplemental_data)?,
-            main_region: Document::parse(&self.main_region)?,
-            main_language: Document::parse(&self.main_language)?,
-            main_root: Document::parse(&self.main_root)?,
+            suplemental_data: parse_xml(&self.suplemental_data)
+                .context("While parsing suplemental data")?,
+            main_region: parse_xml(&self.main_region).context("While parsing main region")?,
+            main_language: parse_xml(&self.main_language).context("Wihle parsing main language")?,
+            main_root: parse_xml(&self.main_root).context("While parsing main root")?,
         })
     }
 }
@@ -238,6 +250,11 @@ fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
     })
 }
 
-async fn get_text(url: &str) -> Result<String, reqwest::Error> {
-    reqwest::get(url).await?.text().await
+async fn get_text(url: &str) -> Result<String> {
+    let resp = reqwest::get(url).await?;
+    if resp.status() == StatusCode::NOT_FOUND {
+        return Err(anyhow!("Not found: {url}"));
+    }
+
+    Ok(resp.text().await?)
 }
