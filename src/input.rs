@@ -219,18 +219,62 @@ fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
                 "numbers > currencies > currency[type='{}'] > symbol",
                 currency_id
             ))
-            .ok_or(anyhow!(""))?
+            .ok_or(anyhow!("Currency node wasn't found"))?
             .text()
             .ok_or(anyhow!("Currency node had no content"))
             .map(str::to_owned)
     }
 
+    fn mon_decimal_point(tree_set: &TreeSet<'_>) -> Result<String> {
+        tree_set
+            .main_root
+            .select("numbers > symbols[numberSystm='latn'] > decimal")
+            .ok_or(anyhow!("Decimal point node wasn't found"))?
+            .text()
+            .ok_or(anyhow!("Decimal poin tnode had no content"))
+            .map(str::to_owned)
+    }
+
+    fn mon_thousands_sep(tree_set: &TreeSet<'_>) -> Result<String> {
+        tree_set
+            .main_root
+            .select("numbers > symbols[numberSystm='latn'] > group")
+            .ok_or(anyhow!("Decimal point node wasn't found"))?
+            .text()
+            .ok_or(anyhow!("Decimal point tnode had no content"))
+            .map(str::to_owned)
+    }
+
+    fn mon_grouping(
+        tree_set: &TreeSet<'_>,
+        thousands_sep: &str,
+        decimal_point: &str,
+    ) -> Result<i8> {
+        let pattern = tree_set.main_root.select(
+            "numbers > currencyFormats > currencyFormatLength:first-child > pattern:first-child",
+        ).ok_or(anyhow!("Failed to get currency grouping node"))?.text().ok_or(anyhow!("Currency patter node had no content"))?;
+
+        let th_sep = pattern
+            .find(thousands_sep)
+            .ok_or(anyhow!("Failed to find thousands seps in the pattern"))?;
+
+        let dc_pnt = (&pattern[th_sep..]).find(decimal_point).ok_or(anyhow!(
+            "Failed to find decimal seps in the pattern after the thousands"
+        ))? as i8;
+
+        // Dc_pnt is already the distance from the thousands to the decimal point, which is the grouping
+        Ok(dc_pnt)
+    }
+
+    let decimal_point = mon_decimal_point(tree_set)?;
+    let thousands_sep = mon_thousands_sep(tree_set)?;
+
     Ok(ModelMonetary {
         int_curr_symbol: int_curr_symbol(tree_set)?,
         currency_symbol: currency_symbol(tree_set)?,
-        mon_decimal_point: todo!(),
-        mon_thousands_sep: todo!(),
-        mon_grouping: todo!(),
+        mon_grouping: mon_grouping(tree_set, &thousands_sep, &decimal_point)?,
+        mon_decimal_point: decimal_point,
+        mon_thousands_sep: thousands_sep,
         positive_sign: todo!(),
         negative_sign: todo!(),
         int_frac_digits: todo!(),
