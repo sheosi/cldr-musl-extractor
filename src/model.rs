@@ -525,7 +525,19 @@ impl Default for ModelMessages {
     }
 }
 
+fn quote(value: &str) -> String {
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        // Some CLDR values use a no-break space, a plain space is simpler and renders
+        // the same in a locale definition.
+        .replace('\u{00a0}', " ");
+
+    format!("\"{escaped}\"")
+}
+
 fn list(list: &[String]) -> String {
-    itertools::Itertools::intersperse(list.iter().map(|s| format!("\"{}\"", s)), ";".to_string())
+    itertools::Itertools::intersperse(list.iter().map(|value| quote(value)), ";".to_string())
         .collect()
 }

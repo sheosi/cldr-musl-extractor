@@ -30,7 +30,9 @@ impl TreeSetStr {
         Ok(TreeSetStr {
             suplemental_data: get_text(SUPPLEMENTAL_URL).await?,
             main_language: get_text(&ln_url).await?,
-            main_region: get_text(&reg_url).await?,
+            // Not every locale has a file for its region, when it doesn't exist the
+            // data is inherited from the language file.
+            main_region: get_optional_text(&reg_url).await?,
             main_root: get_text(MAIN_ROOT_URL).await?,
         })
     }
@@ -68,10 +70,8 @@ impl<'a> TreeSetDoc<'a> {
         TreeSet {
             region,
             suplemental_data: XmlNode(self.suplemental_data.root_element()),
-            main: BackedNode {
-                main: XmlNode(self.main_language.root_element()),
-                back: XmlNode(self.main_region.root_element()),
-            },
+            main_language: XmlNode(self.main_language.root_element()),
+            main_region: XmlNode(self.main_region.root_element()),
             main_root: XmlNode(self.main_root.root_element()),
         }
     }
@@ -80,7 +80,8 @@ impl<'a> TreeSetDoc<'a> {
 struct TreeSet<'a> {
     region: &'a str,
     suplemental_data: XmlNode<'a, 'a>,
-    main: BackedNode<'a>,
+    main_language: XmlNode<'a, 'a>,
+    main_region: XmlNode<'a, 'a>,
     main_root: XmlNode<'a, 'a>,
 }
 
@@ -95,8 +96,235 @@ impl<'a> TreeSet<'a> {
             .attribute("iso4217")
             .ok_or(anyhow!("Couldn't find currency name"))
     }
+
+    /// The XML documents where the data is looked for, from the most specific one
+    /// (the region) to the least specific one (the root locale).
+    fn documents(&self) -> Vec<XmlNode<'a, 'a>> {
+        vec![self.main_region, self.main_language, self.main_root]
+    }
+
+    /// The numbering systems to look for, the default one of the locale comes first.
+    fn numbering_systems(&self) -> Vec<String> {
+        let mut systems = Vec::new();
+
+        for document in self.documents() {
+            let Some(numbering_system) = document
+                .select("numbers > defaultNumberingSystem")
+                .and_then(|node| node.text())
+            else {
+                continue;
+            };
+
+            // The value may be inherited from the parent locale.
+            if numbering_system == INHERITED {
+                continue;
+            }
+
+            if !systems.iter().any(|system| system == numbering_system) {
+                systems.push(numbering_system.to_string());
+            }
+
+            break;
+        }
+
+        if !systems.iter().any(|system| system == "latn") {
+            systems.push("latn".to_string());
+        }
+
+        systems
+    }
+
+    /// The default numbering system of the locale.
+    fn numbering_system(&self) -> String {
+        self.numbering_systems()
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "latn".to_string())
+    }
+
+    /// The text of the first node matching the selector that isn't inherited from the
+    /// parent locale.
+    fn find_text(&self, selector: &str) -> Option<&'a str> {
+        self.documents().into_iter().find_map(|document| {
+            document
+                .select(selector)
+                .and_then(|node| node.text())
+                .filter(|text| *text != INHERITED)
+        })
+    }
+
+    /// The value at the given path, following the CLDR inheritance rules, including the
+    /// aliases used for the lateral inheritance (for example, the abbreviated month
+    /// names inherit from the wide ones).
+    fn find_path(&self, path: &[String]) -> Option<&'a str> {
+        let mut path = path.to_vec();
+
+        // The aliases could create a loop, so the number of redirects is bounded.
+        for _ in 0..32 {
+            let mut redirect = None;
+
+            for document in self.documents() {
+                match lookup_path(&document, &path) {
+                    Lookup::Value(value) if value == INHERITED => continue,
+                    Lookup::Value(value) => return Some(value),
+                    Lookup::Alias(alias) => {
+                        redirect = Some(alias);
+                        break;
+                    }
+                    Lookup::Missing => continue,
+                }
+            }
+
+            path = redirect?;
+        }
+
+        None
+    }
+
+    /// The currency pattern of the locale, `alt` selects the variant of the pattern
+    /// (`None` is the default one and `Some("alphaNextToNumber")` the one used when the
+    /// currency symbol is written with letters, as it happens with the international
+    /// currency symbol).
+    fn currency_pattern(&self, alt: Option<&str>) -> Option<String> {
+        let numbering_systems = self.numbering_systems();
+
+        // The numbering systems are checked before the documents because a locale inherits
+        // the data of its numbering system from the parent locale, and not the data of
+        // another numbering system.
+        for numbering_system in &numbering_systems {
+            for document in self.documents() {
+                if let Some(pattern) = select_currency_pattern(&document, numbering_system, alt) {
+                    return Some(pattern);
+                }
+            }
+        }
+
+        None
+    }
 }
 
+/// An empty locale document, used when CLDR has no file for the locale.
+const EMPTY_LOCALE: &str = r#"<?xml version="1.0" encoding="UTF-8"?><ldml/>"#;
+
+/// The value CLDR uses to mark a value that is inherited from the parent locale.
+const INHERITED: &str = "\u{2191}\u{2191}\u{2191}";
+
+/// The result of looking for a path in one of the locale documents.
+enum Lookup<'a> {
+    Value(&'a str),
+    Alias(Vec<String>),
+    Missing,
+}
+
+/// Splits a path component like `month[type='1']` into the element name and the
+/// attribute it filters by.
+fn parse_component(component: &str) -> (&str, Option<(&str, &str)>) {
+    let Some(open) = component.find('[') else {
+        return (component, None);
+    };
+
+    let name = &component[..open];
+    let filter = component[open + 1..].trim_end_matches(']');
+
+    match filter.split_once('=') {
+        Some((attribute, value)) => (
+            name,
+            Some((attribute.trim_start_matches('@'), value.trim_matches('\''))),
+        ),
+        None => (name, None),
+    }
+}
+
+/// Applies an alias path, the `..` components move to the parent element.
+fn apply_alias(path: &mut Vec<String>, alias: &str) {
+    for component in alias.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                path.pop();
+            }
+            component => path.push(component.to_string()),
+        }
+    }
+}
+
+/// Looks for a path of child elements in a document.
+fn lookup_path<'a>(document: &XmlNode<'a, 'a>, path: &[String]) -> Lookup<'a> {
+    let mut current = document.0;
+
+    for (index, component) in path.iter().enumerate() {
+        let (name, filter) = parse_component(component);
+
+        let child = current
+            .children()
+            .filter(|node| node.is_element())
+            .find(|node| {
+                if node.tag_name().name() != name {
+                    return false;
+                }
+
+                match filter {
+                    Some((attribute, value)) => node.attribute(attribute) == Some(value),
+                    // The default value of an element has no `type` or `alt` attributes.
+                    None => node.attribute("type").is_none() && node.attribute("alt").is_none(),
+                }
+            });
+
+        let Some(child) = child else {
+            let Some(alias) = current
+                .children()
+                .find(|node| node.is_element() && node.tag_name().name() == "alias")
+                .and_then(|node| node.attribute("path"))
+            else {
+                return Lookup::Missing;
+            };
+
+            let mut alias_path: Vec<String> = path[..index].to_vec();
+            apply_alias(&mut alias_path, alias);
+            alias_path.extend_from_slice(&path[index..]);
+
+            return Lookup::Alias(alias_path);
+        };
+
+        current = child;
+    }
+
+    Lookup::Value(current.text().unwrap_or(""))
+}
+
+/// Looks for the currency pattern of a numbering system inside a document.
+fn select_currency_pattern(
+    document: &XmlNode<'_, '_>,
+    numbering_system: &str,
+    alt: Option<&str>,
+) -> Option<String> {
+    let currency_formats = document.select(&format!(
+        "numbers > currencyFormats[numberSystem='{numbering_system}']"
+    ))?;
+
+    // The default currency format is the one without a type attribute.
+    let format_length = currency_formats.children().find(|node| {
+        node.is_element()
+            && node.tag_name().name() == "currencyFormatLength"
+            && node.attribute("type").is_none()
+    })?;
+
+    let currency_format = format_length.children().find(|node| {
+        node.is_element()
+            && node.tag_name().name() == "currencyFormat"
+            && node.attribute("type") == Some("standard")
+    })?;
+
+    currency_format
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name() == "pattern")
+        .find(|node| node.attribute("alt") == alt)
+        .and_then(|node| node.text())
+        .filter(|text| *text != INHERITED)
+        .map(str::to_string)
+}
+
+#[derive(Clone, Copy)]
 struct XmlNode<'a, 'input: 'a>(roxmltree::Node<'a, 'input>);
 
 impl<'a, 'input: 'a> XmlNode<'a, 'input> {
@@ -115,11 +343,7 @@ impl simplecss::Element for XmlNode<'_, '_> {
     }
 
     fn prev_sibling_element(&self) -> Option<Self> {
-        self.0
-            .prev_siblings()
-            .filter(|n| n.is_element())
-            .nth(0)
-            .map(XmlNode)
+        self.0.prev_sibling_element().map(XmlNode)
     }
 
     fn has_local_name(&self, local_name: &str) -> bool {
@@ -142,19 +366,6 @@ impl simplecss::Element for XmlNode<'_, '_> {
     }
 }
 
-/// A node with a fallback, when searching first we search in the main one and then,
-/// we search on the fallback.
-struct BackedNode<'a> {
-    main: XmlNode<'a, 'a>,
-    back: XmlNode<'a, 'a>,
-}
-
-impl<'a> BackedNode<'a> {
-    fn select(&self, text: &str) -> Option<roxmltree::Node<'a, 'a>> {
-        self.main.select(text).or_else(|| self.back.select(text))
-    }
-}
-
 fn from_xml(region: &str, set: &TreeSetStr) -> Result<Model> {
     let tree_set_doc = set.parse()?;
     let tree_set = tree_set_doc.get_roots(region);
@@ -167,31 +378,541 @@ fn from_xml(region: &str, set: &TreeSetStr) -> Result<Model> {
     })
 }
 
+/// Maps a CLDR date field to its `strftime` equivalent, the width is the number of
+/// times the field is repeated in the pattern.
+fn strftime_field(field: char, width: usize) -> Option<&'static str> {
+    Some(match field {
+        // The eras are handled by the `era_*` formats.
+        'G' => "",
+        'y' => match width {
+            2 => "%y",
+            _ => "%Y",
+        },
+        'Y' => match width {
+            2 => "%g",
+            _ => "%G",
+        },
+        'u' | 'U' | 'r' => "%Y",
+        'M' | 'L' => match width {
+            1 | 2 => "%m",
+            3 => "%b",
+            _ => "%B",
+        },
+        'd' => "%d",
+        'D' => "%j",
+        'E' => {
+            if width >= 4 {
+                "%A"
+            } else {
+                "%a"
+            }
+        }
+        'c' => match width {
+            1 | 2 => "%u",
+            3 | 5 | 6 => "%a",
+            _ => "%A",
+        },
+        'e' => "%u",
+        'a' | 'b' | 'B' => "%p",
+        'h' | 'K' => "%I",
+        'H' | 'k' | 'j' => "%H",
+        'm' => "%M",
+        's' => "%S",
+        'w' => "%U",
+        'z' | 'v' | 'V' | 'O' => "%Z",
+        'Z' | 'X' | 'x' => "%z",
+        // Fields without an equivalent in `strftime`.
+        'Q' | 'q' | 'W' | 'F' | 'g' | 'S' | 'A' | 'J' | 'C' => "",
+        _ => return None,
+    })
+}
+
+/// Converts a CLDR date pattern into a `strftime` pattern.
+fn to_strftime(pattern: &str) -> String {
+    to_formatted_strftime(pattern, &[])
+}
+
+/// Converts a CLDR pattern into a `strftime` pattern, the `{0}` and `{1}` placeholders
+/// used by the date time patterns are replaced with the given arguments.
+fn to_formatted_strftime(pattern: &str, arguments: &[(&str, &str)]) -> String {
+    let mut result = String::new();
+    let mut characters = pattern.chars().peekable();
+    let mut literal = false;
+
+    while let Some(character) = characters.next() {
+        if character == '\'' {
+            if literal && characters.peek() == Some(&'\'') {
+                characters.next();
+                result.push('\'');
+            } else {
+                literal = !literal;
+            }
+            continue;
+        }
+
+        if literal {
+            result.push(character);
+            continue;
+        }
+
+        if character == '{' {
+            let mut placeholder = String::from(character);
+            for next in characters.by_ref() {
+                placeholder.push(next);
+                if next == '}' {
+                    break;
+                }
+            }
+
+            match arguments.iter().find(|(name, _)| *name == placeholder) {
+                Some((_, argument)) => result.push_str(argument),
+                None => result.push_str(&placeholder),
+            }
+            continue;
+        }
+
+        if character.is_ascii_alphabetic() {
+            let mut width = 1;
+            while characters.peek() == Some(&character) {
+                characters.next();
+                width += 1;
+            }
+
+            if let Some(field) = strftime_field(character, width) {
+                result.push_str(field);
+            }
+            continue;
+        }
+
+        // The bidi control characters are not part of the formatted output.
+        if matches!(character, '\u{200e}' | '\u{200f}' | '\u{061c}') {
+            continue;
+        }
+
+        result.push(character);
+    }
+
+    result
+}
+
+/// The symbol of the default numbering system of the locale, an empty symbol is valid
+/// (some locales don't use a thousands separator for example).
+fn symbol(tree_set: &TreeSet<'_>, name: &str) -> Option<String> {
+    let number_system = tree_set.numbering_system();
+
+    for document in tree_set.documents() {
+        let selector = format!("numbers > symbols[numberSystem='{number_system}'] > {name}");
+
+        let Some(node) = document.select(&selector) else {
+            continue;
+        };
+
+        return match node.text() {
+            Some(INHERITED) => continue,
+            Some(text) => Some(text.to_string()),
+            None => Some(String::new()),
+        };
+    }
+
+    None
+}
+
+/// The decimal pattern of the default numbering system of the locale.
+fn decimal_pattern<'a>(tree_set: &TreeSet<'a>) -> Option<&'a str> {
+    let number_system = tree_set.numbering_system();
+
+    for document in tree_set.documents() {
+        let Some(formats) = document.select(&format!(
+            "numbers > decimalFormats[numberSystem='{number_system}']"
+        )) else {
+            continue;
+        };
+
+        // The default decimal format is the one without a type attribute.
+        let Some(format_length) = formats.children().find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "decimalFormatLength"
+                && node.attribute("type").is_none()
+        }) else {
+            continue;
+        };
+
+        let Some(decimal_format) = format_length
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "decimalFormat")
+        else {
+            continue;
+        };
+
+        let Some(pattern) = decimal_format.children().find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "pattern"
+                && node.attribute("type").is_none()
+                && node.attribute("alt").is_none()
+        }) else {
+            continue;
+        };
+
+        if let Some(text) = pattern.text().filter(|text| *text != INHERITED) {
+            return Some(text);
+        }
+    }
+
+    None
+}
+
+/// The size of the groups of the integer part of a number pattern.
+fn grouping_size(pattern: &str) -> i8 {
+    let pattern = pattern.split(';').next().unwrap_or(pattern);
+    let integer_part = pattern.split('.').next().unwrap_or(pattern);
+
+    let Some((_, last_group)) = integer_part.rsplit_once(',') else {
+        return -1;
+    };
+
+    last_group
+        .chars()
+        .filter(|character| matches!(character, '0' | '#'))
+        .count() as i8
+}
+
 fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
+    const DAYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    const MONTHS: [&str; 12] = [
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
+    ];
+
+    fn calendar_path(components: &[&str]) -> Vec<String> {
+        ["dates", "calendars", "calendar[type='gregorian']"]
+            .iter()
+            .chain(components)
+            .map(|component| component.to_string())
+            .collect()
+    }
+
+    fn list<const N: usize>(
+        tree_set: &TreeSet<'_>,
+        mut path: impl FnMut(&str) -> Vec<String>,
+        types: [&str; N],
+    ) -> Result<[String; N]> {
+        let mut values = Vec::with_capacity(N);
+
+        for value_type in types {
+            let value = tree_set
+                .find_path(&path(value_type))
+                .ok_or_else(|| anyhow!("Failed to find the localized value '{value_type}'"))?;
+
+            values.push(value.to_string());
+        }
+
+        values
+            .try_into()
+            .map_err(|_| anyhow!("Failed to build the localized list"))
+    }
+
+    fn width_path(container: &str, context: &str, width: &str, item: &str) -> Vec<String> {
+        let mut path = calendar_path(&[container, context]);
+        path.push(width.to_string());
+        path.push(item.to_string());
+        path
+    }
+
+    fn days(tree_set: &TreeSet<'_>, width: &str) -> Result<[String; 7]> {
+        list(
+            tree_set,
+            |day| {
+                width_path(
+                    "days",
+                    "dayContext[type='format']",
+                    &format!("dayWidth[type='{width}']"),
+                    &format!("day[type='{day}']"),
+                )
+            },
+            DAYS,
+        )
+    }
+
+    fn months(tree_set: &TreeSet<'_>, width: &str) -> Result<[String; 12]> {
+        list(
+            tree_set,
+            |month| {
+                width_path(
+                    "months",
+                    "monthContext[type='format']",
+                    &format!("monthWidth[type='{width}']"),
+                    &format!("month[type='{month}']"),
+                )
+            },
+            MONTHS,
+        )
+    }
+
+    fn period(tree_set: &TreeSet<'_>, period: &str) -> Result<String> {
+        for width in ["wide", "abbreviated"] {
+            let path = width_path(
+                "dayPeriods",
+                "dayPeriodContext[type='format']",
+                &format!("dayPeriodWidth[type='{width}']"),
+                &format!("dayPeriod[type='{period}']"),
+            );
+
+            if let Some(value) = tree_set.find_path(&path) {
+                return Ok(value.to_string());
+            }
+        }
+
+        Err(anyhow!("Failed to find the '{period}' day period"))
+    }
+
+    fn am_pm(tree_set: &TreeSet<'_>) -> Result<[String; 2]> {
+        Ok([period(tree_set, "am")?, period(tree_set, "pm")?])
+    }
+
+    fn format_pattern<'a>(
+        tree_set: &TreeSet<'a>,
+        container: &str,
+        length: &str,
+    ) -> Option<&'a str> {
+        let element = container.strip_suffix('s').unwrap_or(container);
+
+        let mut path = calendar_path(&[container]);
+        path.push(format!("{element}Length[type='{length}']"));
+        path.push(element.to_string());
+        path.push("pattern".to_string());
+
+        tree_set.find_path(&path)
+    }
+
+    fn date_pattern(tree_set: &TreeSet<'_>, length: &str) -> Result<String> {
+        format_pattern(tree_set, "dateFormats", length)
+            .map(to_strftime)
+            .ok_or_else(|| anyhow!("Failed to find the '{length}' date pattern"))
+    }
+
+    fn time_pattern<'a>(tree_set: &TreeSet<'a>, length: &str) -> Result<&'a str> {
+        format_pattern(tree_set, "timeFormats", length)
+            .ok_or_else(|| anyhow!("Failed to find the '{length}' time pattern"))
+    }
+
+    fn d_fmt(tree_set: &TreeSet<'_>) -> Result<String> {
+        date_pattern(tree_set, "short")
+    }
+
+    fn t_fmt(tree_set: &TreeSet<'_>) -> Result<String> {
+        Ok(to_strftime(time_pattern(tree_set, "medium")?))
+    }
+
+    fn t_fmt_ampm(tree_set: &TreeSet<'_>) -> Result<String> {
+        let pattern = time_pattern(tree_set, "medium")?;
+
+        // Only the locales that use a 12-hour clock have a representation with AM/PM,
+        // the rest use the default one.
+        if pattern.contains(['h', 'K']) {
+            Ok(to_strftime(pattern))
+        } else {
+            Ok("%I:%M:%S %p".to_string())
+        }
+    }
+
+    fn d_t_fmt(tree_set: &TreeSet<'_>) -> Result<String> {
+        let date = date_pattern(tree_set, "medium")?;
+        let time = to_strftime(time_pattern(tree_set, "medium")?);
+
+        let pattern = format_pattern(tree_set, "dateTimeFormats", "medium")
+            .ok_or_else(|| anyhow!("Failed to find the 'medium' date time pattern"))?;
+
+        Ok(to_formatted_strftime(
+            pattern,
+            &[("{0}", &time), ("{1}", &date)],
+        ))
+    }
+
     Ok(ModelTime {
-        abday: todo!(),
-        day: todo!(),
-        abmon: todo!(),
-        mon: todo!(),
-        am_pm: todo!(),
-        d_t_fmt: todo!(),
-        d_fmt: todo!(),
-        t_fmt: todo!(),
-        t_fmt_ampm: todo!(),
-        era: todo!(),
-        era_d_t_fmt: todo!(),
-        era_d_fmt: todo!(),
-        era_t_fmt: todo!(),
-        alt_digits: todo!(),
+        abday: days(tree_set, "abbreviated")?,
+        day: days(tree_set, "wide")?,
+        abmon: months(tree_set, "abbreviated")?,
+        mon: months(tree_set, "wide")?,
+        am_pm: am_pm(tree_set)?,
+        d_t_fmt: d_t_fmt(tree_set)?,
+        d_fmt: d_fmt(tree_set)?,
+        t_fmt: t_fmt(tree_set)?,
+        t_fmt_ampm: t_fmt_ampm(tree_set)?,
+        // CLDR doesn't provide the era rules (start and end dates) used by the libc
+        // `era` keyword.
+        era: String::new(),
+        era_d_t_fmt: d_t_fmt(tree_set)?,
+        era_d_fmt: d_fmt(tree_set)?,
+        era_t_fmt: t_fmt(tree_set)?,
+        // CLDR doesn't provide an equivalent for the alternative date digits.
+        alt_digits: "0123456789".to_string(),
     })
 }
 
 fn extract_numeric(tree_set: &TreeSet<'_>) -> Result<ModelNumeric> {
+    let decimal_point =
+        symbol(tree_set, "decimal").ok_or_else(|| anyhow!("Failed to find the decimal point"))?;
+
+    let thousands_sep = symbol(tree_set, "group").unwrap_or_default();
+
+    let grouping = decimal_pattern(tree_set).map(grouping_size).unwrap_or(-1);
+
     Ok(ModelNumeric {
-        decimal_point: todo!(),
-        thousands_sep: todo!(),
-        grouping: todo!(),
+        decimal_point,
+        thousands_sep,
+        grouping,
     })
+}
+
+/// A currency pattern as defined by CLDR, it may have a negative subpattern
+/// separated by a `;`, if it doesn't the negative amounts are the positive ones
+/// prefixed by a minus sign.
+struct CurrencyPattern {
+    positive: PatternPart,
+    negative: PatternPart,
+}
+
+impl CurrencyPattern {
+    fn new(pattern: &str) -> Self {
+        match pattern.split_once(';') {
+            Some((positive, negative)) => Self {
+                positive: PatternPart::new(positive),
+                negative: PatternPart::new(negative),
+            },
+            None => Self {
+                positive: PatternPart::new(pattern),
+                negative: PatternPart::new(&format!("-{pattern}")),
+            },
+        }
+    }
+
+    /// The position of the sign of a positive amount, the positive subpattern has no
+    /// sign so the sign is placed where the negative one would be.
+    fn positive_sign_posn(&self) -> i8 {
+        self.negative.sign_posn(false).unwrap_or(1)
+    }
+
+    /// The position of the sign of a negative amount.
+    fn negative_sign_posn(&self) -> i8 {
+        self.negative.sign_posn(true).unwrap_or(1)
+    }
+}
+
+/// The patterns used by the national and the international monetary formats.
+struct MonetaryPatterns {
+    national: CurrencyPattern,
+    international: CurrencyPattern,
+}
+
+/// One of the subpatterns of a currency pattern.
+struct PatternPart {
+    text: String,
+    /// The position of the currency symbol.
+    symbol: Option<usize>,
+    /// The position of the sign.
+    sign: Option<usize>,
+    /// The position of the number.
+    number: Option<usize>,
+    /// Whether the amount is surrounded by parentheses.
+    parenthesized: bool,
+}
+
+impl PatternPart {
+    fn new(text: &str) -> Self {
+        // The old style patterns use the placeholders {0} for the currency symbol and
+        // {1} for the number.
+        let symbol = text.find("{0}").or_else(|| text.find('\u{00a4}'));
+        let number = text.find("{1}").or_else(|| text.find(['#', '0']));
+        let sign = text.char_indices().find_map(|(position, character)| {
+            matches!(character, '-' | '\u{2212}').then_some(position)
+        });
+        let parenthesized = text.contains(['(', ')']);
+
+        Self {
+            text: text.to_string(),
+            symbol,
+            sign,
+            number,
+            parenthesized,
+        }
+    }
+
+    /// Whether the currency symbol goes before the number.
+    fn cs_precedes(&self) -> i8 {
+        match (self.symbol, self.number) {
+            (Some(symbol), Some(number)) if symbol < number => 1,
+            _ => 0,
+        }
+    }
+
+    /// How the currency symbol, the sign and the number are separated, following the
+    /// values defined by POSIX for the `*_sep_by_space` keywords:
+    /// - 0: no space separates the currency symbol and the value.
+    /// - 1: the space separates the currency symbol from the value.
+    /// - 2: the space separates the currency symbol from the sign.
+    fn sep_by_space(&self) -> i8 {
+        let (Some(symbol), Some(number)) = (self.symbol, self.number) else {
+            return 0;
+        };
+
+        let (start, end) = if symbol < number {
+            (symbol, number)
+        } else {
+            (number, symbol)
+        };
+
+        if !self.text[start..end].chars().any(char::is_whitespace) {
+            return 0;
+        }
+
+        // There is a space between the currency symbol and the number, the sign tells us
+        // whether the space separates the symbol from the sign (2) or the symbol and the
+        // sign from the number (1).
+        if let Some(sign) = self.sign {
+            let (start, end) = if symbol < sign {
+                (symbol, sign)
+            } else {
+                (sign, symbol)
+            };
+
+            let number_in_between = self
+                .number
+                .is_some_and(|number| number > start && number < end);
+
+            if !number_in_between && self.text[start..end].chars().any(char::is_whitespace) {
+                return 2;
+            }
+        }
+
+        1
+    }
+
+    /// The position of the sign, following the values defined by POSIX for the
+    /// `*_sign_posn` keywords:
+    /// - 0: the amount and the currency symbol are surrounded by parentheses.
+    /// - 1: the sign precedes the quantity and the currency symbol.
+    /// - 2: the sign succeeds the quantity and the currency symbol.
+    /// - 3: the sign precedes the currency symbol.
+    /// - 4: the sign succeeds the currency symbol.
+    fn sign_posn(&self, allow_parentheses: bool) -> Option<i8> {
+        if allow_parentheses && self.parenthesized {
+            return Some(0);
+        }
+
+        let sign = self.sign?;
+        let symbol = self.symbol?;
+        let number = self.number?;
+
+        if sign < symbol && sign < number {
+            Some(1)
+        } else if sign > symbol && sign > number {
+            Some(2)
+        } else if sign > symbol && sign < number {
+            Some(4)
+        } else {
+            // The sign is between the number and the currency symbol.
+            Some(3)
+        }
+    }
 }
 
 fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
@@ -200,97 +921,170 @@ fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
 
         assert!(currency_id.len() == 3);
 
-        let currency_separator = tree_set
-            .main
-            .select("numbers > currencyFormats > currencyFormatLength:first-child > currencyFormat[alt='alphaNextToNumber'] > pattern")
-            .and_then(|n|n.text()).unwrap_or(" ");
-
-        assert!(currency_separator.len() == 1);
-
-        Ok(format!("{}{}", currency_id, currency_separator))
+        // The international currency symbol is always followed by a space, it's only
+        // printed when the symbol has to be separated from the amount.
+        Ok(format!("{currency_id} "))
     }
 
     fn currency_symbol(tree_set: &TreeSet<'_>) -> Result<String> {
         let currency_id = tree_set.get_currency_id()?;
 
         tree_set
-            .main_root
-            .select(&format!(
-                "numbers > currencies > currency[type='{}'] > symbol",
-                currency_id
+            .find_text(&format!(
+                "numbers > currencies > currency[type='{currency_id}'] > symbol"
             ))
-            .ok_or(anyhow!("Currency node wasn't found"))?
-            .text()
-            .ok_or(anyhow!("Currency node had no content"))
             .map(str::to_owned)
+            .ok_or_else(|| anyhow!("Currency node wasn't found"))
     }
 
     fn mon_decimal_point(tree_set: &TreeSet<'_>) -> Result<String> {
-        tree_set
-            .main_root
-            .select("numbers > symbols[numberSystm='latn'] > decimal")
-            .ok_or(anyhow!("Decimal point node wasn't found"))?
-            .text()
-            .ok_or(anyhow!("Decimal poin tnode had no content"))
-            .map(str::to_owned)
+        symbol(tree_set, "decimal").ok_or_else(|| anyhow!("Failed to find the decimal point"))
     }
 
     fn mon_thousands_sep(tree_set: &TreeSet<'_>) -> Result<String> {
+        Ok(symbol(tree_set, "group").unwrap_or_default())
+    }
+
+    fn positive_sign(tree_set: &TreeSet<'_>) -> Result<String> {
+        Ok(symbol(tree_set, "plusSign").unwrap_or_default())
+    }
+
+    fn negative_sign(tree_set: &TreeSet<'_>) -> Result<String> {
+        Ok(symbol(tree_set, "minusSign").unwrap_or_default())
+    }
+
+    fn int_frac_digits(tree_set: &TreeSet<'_>, currency_code: &str) -> Result<i8> {
+        fn extract_digits<'a, 'input>(n: roxmltree::Node<'a, 'input>) -> Result<i8> {
+            Ok(n.attribute("digits").ok_or(anyhow!(""))?.parse()?)
+        }
+
         tree_set
-            .main_root
-            .select("numbers > symbols[numberSystm='latn'] > group")
-            .ok_or(anyhow!("Decimal point node wasn't found"))?
-            .text()
-            .ok_or(anyhow!("Decimal point tnode had no content"))
-            .map(str::to_owned)
+            .suplemental_data
+            .select(&format!(
+                "supplementalData > currencyData > fractions > info[iso4217='{currency_code}']"
+            ))
+            .map(extract_digits)
+            .unwrap_or(Ok(2))
     }
 
-    fn mon_grouping(
-        tree_set: &TreeSet<'_>,
-        thousands_sep: &str,
-        decimal_point: &str,
-    ) -> Result<i8> {
-        let pattern = tree_set.main_root.select(
-            "numbers > currencyFormats > currencyFormatLength:first-child > pattern:first-child",
-        ).ok_or(anyhow!("Failed to get currency grouping node"))?.text().ok_or(anyhow!("Currency patter node had no content"))?;
+    /// The currency patterns used to build the monetary data, the national one uses the
+    /// currency symbol of the locale and the international one the pattern used when the
+    /// symbol is written with letters, as it happens with the international currency
+    /// symbol (for example `USD`).
+    fn currency_patterns(tree_set: &TreeSet<'_>) -> Result<MonetaryPatterns> {
+        let national = tree_set
+            .currency_pattern(None)
+            .ok_or(anyhow!("Failed to find the currency pattern"))?;
 
-        let th_sep = pattern
-            .find(thousands_sep)
-            .ok_or(anyhow!("Failed to find thousands seps in the pattern"))?;
+        let international = tree_set
+            .currency_pattern(Some("alphaNextToNumber"))
+            .unwrap_or_else(|| national.clone());
 
-        let dc_pnt = (&pattern[th_sep..]).find(decimal_point).ok_or(anyhow!(
-            "Failed to find decimal seps in the pattern after the thousands"
-        ))? as i8;
-
-        // Dc_pnt is already the distance from the thousands to the decimal point, which is the grouping
-        Ok(dc_pnt)
+        Ok(MonetaryPatterns {
+            national: CurrencyPattern::new(&national),
+            international: CurrencyPattern::new(&international),
+        })
     }
 
+    fn p_cs_precedes(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?.national.positive.cs_precedes())
+    }
+
+    fn p_sep_by_space(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .national
+            .positive
+            .sep_by_space())
+    }
+
+    fn n_cs_precedes(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?.national.negative.cs_precedes())
+    }
+
+    fn n_sep_by_space(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .national
+            .negative
+            .sep_by_space())
+    }
+
+    fn p_sign_posn(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?.national.positive_sign_posn())
+    }
+
+    fn n_sign_posn(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?.national.negative_sign_posn())
+    }
+
+    fn int_p_cs_precedes(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .international
+            .positive
+            .cs_precedes())
+    }
+
+    fn int_p_sep_by_space(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .international
+            .positive
+            .sep_by_space())
+    }
+
+    fn int_n_cs_precedes(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .international
+            .negative
+            .cs_precedes())
+    }
+
+    fn int_n_sep_by_space(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .international
+            .negative
+            .sep_by_space())
+    }
+
+    fn int_p_sign_posn(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .international
+            .positive_sign_posn())
+    }
+
+    fn int_n_sign_posn(tree_set: &TreeSet<'_>) -> Result<i8> {
+        Ok(currency_patterns(tree_set)?
+            .international
+            .negative_sign_posn())
+    }
+
+    let currency_code = tree_set.get_currency_id()?;
     let decimal_point = mon_decimal_point(tree_set)?;
     let thousands_sep = mon_thousands_sep(tree_set)?;
+    let pattern = tree_set
+        .currency_pattern(None)
+        .ok_or(anyhow!("Failed to get the currency pattern"))?;
 
     Ok(ModelMonetary {
         int_curr_symbol: int_curr_symbol(tree_set)?,
         currency_symbol: currency_symbol(tree_set)?,
-        mon_grouping: mon_grouping(tree_set, &thousands_sep, &decimal_point)?,
+        mon_grouping: grouping_size(&pattern),
+        int_frac_digits: int_frac_digits(tree_set, currency_code)?,
+        frac_digits: int_frac_digits(tree_set, currency_code)?,
         mon_decimal_point: decimal_point,
         mon_thousands_sep: thousands_sep,
-        positive_sign: todo!(),
-        negative_sign: todo!(),
-        int_frac_digits: todo!(),
-        frac_digits: todo!(),
-        p_cs_precedes: todo!(),
-        p_sep_by_space: todo!(),
-        n_cs_precedes: todo!(),
-        n_sep_by_space: todo!(),
-        p_sign_posn: todo!(),
-        n_sign_posn: todo!(),
-        int_p_cs_precedes: todo!(),
-        int_p_sep_by_space: todo!(),
-        int_n_cs_precedes: todo!(),
-        int_n_sep_by_space: todo!(),
-        int_p_sign_posn: todo!(),
-        int_n_sign_posn: todo!(),
+        positive_sign: positive_sign(tree_set)?,
+        negative_sign: negative_sign(tree_set)?,
+        p_cs_precedes: p_cs_precedes(tree_set)?,
+        p_sep_by_space: p_sep_by_space(tree_set)?,
+        n_cs_precedes: n_cs_precedes(tree_set)?,
+        n_sep_by_space: n_sep_by_space(tree_set)?,
+        p_sign_posn: p_sign_posn(tree_set)?,
+        n_sign_posn: n_sign_posn(tree_set)?,
+        int_p_cs_precedes: int_p_cs_precedes(tree_set)?,
+        int_p_sep_by_space: int_p_sep_by_space(tree_set)?,
+        int_n_cs_precedes: int_n_cs_precedes(tree_set)?,
+        int_n_sep_by_space: int_n_sep_by_space(tree_set)?,
+        int_p_sign_posn: int_p_sign_posn(tree_set)?,
+        int_n_sign_posn: int_n_sign_posn(tree_set)?,
     })
 }
 
@@ -298,6 +1092,17 @@ async fn get_text(url: &str) -> Result<String> {
     let resp = reqwest::get(url).await?;
     if resp.status() == StatusCode::NOT_FOUND {
         return Err(anyhow!("Not found: {url}"));
+    }
+
+    Ok(resp.text().await?)
+}
+
+/// Fetches the URL, a missing document is returned as an empty locale so its data is
+/// inherited from the other documents.
+async fn get_optional_text(url: &str) -> Result<String> {
+    let resp = reqwest::get(url).await?;
+    if resp.status() == StatusCode::NOT_FOUND {
+        return Ok(EMPTY_LOCALE.to_string());
     }
 
     Ok(resp.text().await?)
