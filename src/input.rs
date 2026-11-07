@@ -94,7 +94,7 @@ impl<'a> TreeSet<'a> {
                 "currencyData > region[iso3166={}] > currency:first-child",
                 self.region
             ))
-            .ok_or(anyhow!("Failed to find"))?
+            .ok_or(anyhow!("Failed to find currency node"))?
             .attribute("iso4217")
             .ok_or(anyhow!("Couldn't find currency name"))
     }
@@ -868,12 +868,13 @@ fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
     fn currency_symbol(tree_set: &TreeSet<'_>) -> Result<String> {
         let currency_id = tree_set.get_currency_id()?;
 
-        tree_set
+        // CLDR uses the currency code when the locale has no explicit symbol.
+        Ok(tree_set
             .find(&format!(
                 "numbers > currencies > currency[type='{currency_id}'] > symbol"
             ))
-            .map(str::to_owned)
-            .ok_or_else(|| anyhow!("Currency node wasn't found"))
+            .unwrap_or(currency_id)
+            .to_string())
     }
 
     fn mon_decimal_point(tree_set: &TreeSet<'_>) -> Result<String> {
