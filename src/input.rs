@@ -654,7 +654,7 @@ fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
     }
 
     fn d_t_fmt(tree_set: &TreeSet<'_>) -> Result<String> {
-        let date = date_pattern(tree_set, "medium")?;
+        let date = date_pattern(tree_set, "full")?;
         let time = to_strftime(time_pattern(tree_set, "medium")?);
 
         let pattern = format_pattern(tree_set, "dateTimeFormats", "medium")
