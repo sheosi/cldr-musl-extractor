@@ -145,27 +145,30 @@ impl<'a> TreeSet<'a> {
     }
 
     /// The text of the first node matching the selector that isn't inherited from the
-    /// parent locale.
-    fn find_text(&self, selector: &str) -> Option<&'a str> {
-        self.documents().into_iter().find_map(|document| {
-            document
-                .select(selector)
-                .and_then(|node| node.text())
-                .filter(|text| *text != INHERITED)
-        })
-    }
-
-    /// The value at the given path, following the CLDR inheritance rules, including the
-    /// aliases used for the lateral inheritance (for example, the abbreviated month
-    /// names inherit from the wide ones).
-    fn find_path(&self, path: &[String]) -> Option<&'a str> {
-        let mut path = path.to_vec();
+    /// parent locale, following the CLDR aliases.
+    fn find(&self, selector: &str) -> Option<&'a str> {
+        let mut path: Vec<String> = selector
+            .split('>')
+            .map(str::trim)
+            .map(str::to_string)
+            .collect();
 
         // The aliases could create a loop, so the number of redirects is bounded.
         for _ in 0..32 {
+            let selector = path.join(" > ");
             let mut redirect = None;
 
             for document in self.documents() {
+                let value = document
+                    .select(&selector)
+                    .map(|node| node.text().unwrap_or(""))
+                    .filter(|text| *text != INHERITED);
+
+                if let Some(value) = value {
+                    return Some(value);
+                }
+
+                // The selector didn't match, look for an alias in its place.
                 match lookup_path(&document, &path) {
                     Lookup::Value(value) if value == INHERITED => continue,
                     Lookup::Value(value) => return Some(value),
@@ -218,25 +221,6 @@ enum Lookup<'a> {
     Missing,
 }
 
-/// Splits a path component like `month[type='1']` into the element name and the
-/// attribute it filters by.
-fn parse_component(component: &str) -> (&str, Option<(&str, &str)>) {
-    let Some(open) = component.find('[') else {
-        return (component, None);
-    };
-
-    let name = &component[..open];
-    let filter = component[open + 1..].trim_end_matches(']');
-
-    match filter.split_once('=') {
-        Some((attribute, value)) => (
-            name,
-            Some((attribute.trim_start_matches('@'), value.trim_matches('\''))),
-        ),
-        None => (name, None),
-    }
-}
-
 /// Applies an alias path, the `..` components move to the parent element.
 fn apply_alias(path: &mut Vec<String>, alias: &str) {
     for component in alias.split('/') {
@@ -245,37 +229,21 @@ fn apply_alias(path: &mut Vec<String>, alias: &str) {
             ".." => {
                 path.pop();
             }
-            component => path.push(component.to_string()),
+            // The alias paths use `[@attribute]`, the selectors use `[attribute]`.
+            component => path.push(component.replace("[@", "[")),
         }
     }
 }
 
-/// Looks for a path of child elements in a document.
+/// Looks for a path of child elements in a document using CSS selectors. It walks the
+/// path one element at a time so it can detect an alias in place of a missing child.
 fn lookup_path<'a>(document: &XmlNode<'a, 'a>, path: &[String]) -> Lookup<'a> {
-    let mut current = document.0;
+    let mut current = *document;
 
     for (index, component) in path.iter().enumerate() {
-        let (name, filter) = parse_component(component);
-
-        let child = current
-            .children()
-            .filter(|node| node.is_element())
-            .find(|node| {
-                if node.tag_name().name() != name {
-                    return false;
-                }
-
-                match filter {
-                    Some((attribute, value)) => node.attribute(attribute) == Some(value),
-                    // The default value of an element has no `type` or `alt` attributes.
-                    None => node.attribute("type").is_none() && node.attribute("alt").is_none(),
-                }
-            });
-
-        let Some(child) = child else {
+        let Some(child) = current.select_child(component) else {
             let Some(alias) = current
-                .children()
-                .find(|node| node.is_element() && node.tag_name().name() == "alias")
+                .select_child("alias")
                 .and_then(|node| node.attribute("path"))
             else {
                 return Lookup::Missing;
@@ -288,10 +256,10 @@ fn lookup_path<'a>(document: &XmlNode<'a, 'a>, path: &[String]) -> Lookup<'a> {
             return Lookup::Alias(alias_path);
         };
 
-        current = child;
+        current = XmlNode(child);
     }
 
-    Lookup::Value(current.text().unwrap_or(""))
+    Lookup::Value(current.0.text().unwrap_or(""))
 }
 
 /// Looks for the currency pattern of a numbering system inside a document.
@@ -300,28 +268,20 @@ fn select_currency_pattern(
     numbering_system: &str,
     alt: Option<&str>,
 ) -> Option<String> {
-    let currency_formats = document.select(&format!(
-        "numbers > currencyFormats[numberSystem='{numbering_system}']"
-    ))?;
+    let format_length = document
+        .select_all(&format!(
+            "numbers > currencyFormats[numberSystem='{numbering_system}'] > currencyFormatLength"
+        ))
+        .into_iter()
+        .find(|node| node.0.attribute("type").is_none())?;
 
-    // The default currency format is the one without a type attribute.
-    let format_length = currency_formats.children().find(|node| {
-        node.is_element()
-            && node.tag_name().name() == "currencyFormatLength"
-            && node.attribute("type").is_none()
-    })?;
+    let currency_format = format_length.select("currencyFormat[type='standard']")?;
 
-    let currency_format = format_length.children().find(|node| {
-        node.is_element()
-            && node.tag_name().name() == "currencyFormat"
-            && node.attribute("type") == Some("standard")
-    })?;
-
-    currency_format
-        .children()
-        .filter(|node| node.is_element() && node.tag_name().name() == "pattern")
-        .find(|node| node.attribute("alt") == alt)
-        .and_then(|node| node.text())
+    XmlNode(currency_format)
+        .select_all("pattern")
+        .into_iter()
+        .find(|node| node.0.attribute("alt") == alt)
+        .and_then(|node| node.0.text())
         .filter(|text| *text != INHERITED)
         .map(str::to_string)
 }
@@ -336,6 +296,32 @@ impl<'a, 'input: 'a> XmlNode<'a, 'input> {
             .descendants()
             .filter(|n| n.is_element())
             .find(|&node| selectors.matches(&XmlNode(node)))
+    }
+
+    fn select_all(&self, text: &str) -> Vec<XmlNode<'a, 'input>> {
+        let Some(selectors) = simplecss::Selector::parse(text) else {
+            return Vec::new();
+        };
+
+        self.0
+            .descendants()
+            .filter(|n| n.is_element())
+            .filter(|&node| selectors.matches(&XmlNode(node)))
+            .map(XmlNode)
+            .collect()
+    }
+
+    fn select_child(&self, text: &str) -> Option<roxmltree::Node<'a, 'input>> {
+        let selectors = simplecss::Selector::parse(text)?;
+        // Without an attribute filter, CLDR means the default element, the one without
+        // `type` or `alt` attributes.
+        let has_filter = text.contains('[');
+
+        self.0.children().filter(|n| n.is_element()).find(|&node| {
+            selectors.matches(&XmlNode(node))
+                && (has_filter
+                    || (node.attribute("type").is_none() && node.attribute("alt").is_none()))
+        })
     }
 }
 
@@ -502,21 +488,11 @@ fn to_formatted_strftime(pattern: &str, arguments: &[(&str, &str)]) -> String {
 fn symbol(tree_set: &TreeSet<'_>, name: &str) -> Option<String> {
     let number_system = tree_set.numbering_system();
 
-    for document in tree_set.documents() {
-        let selector = format!("numbers > symbols[numberSystem='{number_system}'] > {name}");
-
-        let Some(node) = document.select(&selector) else {
-            continue;
-        };
-
-        return match node.text() {
-            Some(INHERITED) => continue,
-            Some(text) => Some(text.to_string()),
-            None => Some(String::new()),
-        };
-    }
-
-    None
+    tree_set
+        .find(&format!(
+            "numbers > symbols[numberSystem='{number_system}'] > {name}"
+        ))
+        .map(str::to_string)
 }
 
 /// The decimal pattern of the default numbering system of the locale.
@@ -524,38 +500,25 @@ fn decimal_pattern<'a>(tree_set: &TreeSet<'a>) -> Option<&'a str> {
     let number_system = tree_set.numbering_system();
 
     for document in tree_set.documents() {
-        let Some(formats) = document.select(&format!(
-            "numbers > decimalFormats[numberSystem='{number_system}']"
-        )) else {
-            continue;
-        };
-
-        // The default decimal format is the one without a type attribute.
-        let Some(format_length) = formats.children().find(|node| {
-            node.is_element()
-                && node.tag_name().name() == "decimalFormatLength"
-                && node.attribute("type").is_none()
-        }) else {
-            continue;
-        };
-
-        let Some(decimal_format) = format_length
-            .children()
-            .find(|node| node.is_element() && node.tag_name().name() == "decimalFormat")
+        let Some(format_length) = document
+            .select_all(&format!(
+                "numbers > decimalFormats[numberSystem='{number_system}'] > decimalFormatLength"
+            ))
+            .into_iter()
+            .find(|node| node.0.attribute("type").is_none())
         else {
             continue;
         };
 
-        let Some(pattern) = decimal_format.children().find(|node| {
-            node.is_element()
-                && node.tag_name().name() == "pattern"
-                && node.attribute("type").is_none()
-                && node.attribute("alt").is_none()
-        }) else {
+        let Some(pattern) = format_length
+            .select_all("decimalFormat > pattern")
+            .into_iter()
+            .find(|node| node.0.attribute("type").is_none() && node.0.attribute("alt").is_none())
+        else {
             continue;
         };
 
-        if let Some(text) = pattern.text().filter(|text| *text != INHERITED) {
+        if let Some(text) = pattern.0.text().filter(|text| *text != INHERITED) {
             return Some(text);
         }
     }
@@ -579,29 +542,22 @@ fn grouping_size(pattern: &str) -> i8 {
 }
 
 fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
+    const CALENDAR: &str = "dates > calendars > calendar[type='gregorian']";
     const DAYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
     const MONTHS: [&str; 12] = [
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
     ];
 
-    fn calendar_path(components: &[&str]) -> Vec<String> {
-        ["dates", "calendars", "calendar[type='gregorian']"]
-            .iter()
-            .chain(components)
-            .map(|component| component.to_string())
-            .collect()
-    }
-
     fn list<const N: usize>(
         tree_set: &TreeSet<'_>,
-        mut path: impl FnMut(&str) -> Vec<String>,
+        mut selector: impl FnMut(&str) -> String,
         types: [&str; N],
     ) -> Result<[String; N]> {
         let mut values = Vec::with_capacity(N);
 
         for value_type in types {
             let value = tree_set
-                .find_path(&path(value_type))
+                .find(&selector(value_type))
                 .ok_or_else(|| anyhow!("Failed to find the localized value '{value_type}'"))?;
 
             values.push(value.to_string());
@@ -612,22 +568,12 @@ fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
             .map_err(|_| anyhow!("Failed to build the localized list"))
     }
 
-    fn width_path(container: &str, context: &str, width: &str, item: &str) -> Vec<String> {
-        let mut path = calendar_path(&[container, context]);
-        path.push(width.to_string());
-        path.push(item.to_string());
-        path
-    }
-
     fn days(tree_set: &TreeSet<'_>, width: &str) -> Result<[String; 7]> {
         list(
             tree_set,
             |day| {
-                width_path(
-                    "days",
-                    "dayContext[type='format']",
-                    &format!("dayWidth[type='{width}']"),
-                    &format!("day[type='{day}']"),
+                format!(
+                    "{CALENDAR} > days > dayContext[type='format'] > dayWidth[type='{width}'] > day[type='{day}']"
                 )
             },
             DAYS,
@@ -638,11 +584,8 @@ fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
         list(
             tree_set,
             |month| {
-                width_path(
-                    "months",
-                    "monthContext[type='format']",
-                    &format!("monthWidth[type='{width}']"),
-                    &format!("month[type='{month}']"),
+                format!(
+                    "{CALENDAR} > months > monthContext[type='format'] > monthWidth[type='{width}'] > month[type='{month}']"
                 )
             },
             MONTHS,
@@ -651,14 +594,11 @@ fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
 
     fn period(tree_set: &TreeSet<'_>, period: &str) -> Result<String> {
         for width in ["wide", "abbreviated"] {
-            let path = width_path(
-                "dayPeriods",
-                "dayPeriodContext[type='format']",
-                &format!("dayPeriodWidth[type='{width}']"),
-                &format!("dayPeriod[type='{period}']"),
+            let selector = format!(
+                "{CALENDAR} > dayPeriods > dayPeriodContext[type='format'] > dayPeriodWidth[type='{width}'] > dayPeriod[type='{period}']"
             );
 
-            if let Some(value) = tree_set.find_path(&path) {
+            if let Some(value) = tree_set.find(&selector) {
                 return Ok(value.to_string());
             }
         }
@@ -677,12 +617,9 @@ fn extract_time(tree_set: &TreeSet<'_>) -> Result<ModelTime> {
     ) -> Option<&'a str> {
         let element = container.strip_suffix('s').unwrap_or(container);
 
-        let mut path = calendar_path(&[container]);
-        path.push(format!("{element}Length[type='{length}']"));
-        path.push(element.to_string());
-        path.push("pattern".to_string());
-
-        tree_set.find_path(&path)
+        tree_set.find(&format!(
+            "{CALENDAR} > {container} > {element}Length[type='{length}'] > {element} > pattern"
+        ))
     }
 
     fn date_pattern(tree_set: &TreeSet<'_>, length: &str) -> Result<String> {
@@ -932,7 +869,7 @@ fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
         let currency_id = tree_set.get_currency_id()?;
 
         tree_set
-            .find_text(&format!(
+            .find(&format!(
                 "numbers > currencies > currency[type='{currency_id}'] > symbol"
             ))
             .map(str::to_owned)
