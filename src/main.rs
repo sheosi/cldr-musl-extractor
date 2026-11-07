@@ -43,10 +43,13 @@ async fn main() {
     }
 
     let targets: Vec<String> = if args.targets.first().is_some_and(|target| target == "all") {
-        ALL_LOCALES
-            .iter()
-            .map(|locale| (*locale).to_string())
-            .collect()
+        match all_locales().await {
+            Ok(locales) => locales,
+            Err(error) => {
+                eprintln!("Failed to list CLDR locales: {error:?}");
+                return;
+            }
+        }
     } else {
         args.targets
     };
@@ -62,6 +65,42 @@ async fn main() {
             eprintln!("Locale task failed: {error:?}");
         }
     }
+}
+
+async fn all_locales() -> Result<Vec<String>> {
+    let mut locales = Vec::new();
+    let mut entries = tokio::fs::read_dir("cldr/common/main").await?;
+
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+
+        if path.extension().and_then(|extension| extension.to_str()) != Some("xml") {
+            continue;
+        }
+
+        let Some(locale) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+
+        if locale == "root" {
+            continue;
+        }
+
+        let Ok(parsed) = locale.parse::<LanguageIdentifier>() else {
+            continue;
+        };
+
+        // The generated locale name is language + region, so scripts and variants
+        // aren't supported.
+        if parsed.region.is_none() || parsed.script.is_some() || parsed.variants().len() > 0 {
+            continue;
+        }
+
+        locales.push(locale.to_string());
+    }
+
+    locales.sort();
+    Ok(locales)
 }
 
 async fn work_locale_inner(locale_str: &str) -> Result<()> {
@@ -84,7 +123,13 @@ async fn work_locale_inner(locale_str: &str) -> Result<()> {
         .await
         .context("while parsing cldr data")?;
 
-    locale.to_file(Path::new(&format!("{}_{}", lang, &region)))?;
+    let name = if region.is_empty() {
+        lang.to_string()
+    } else {
+        format!("{lang}_{region}")
+    };
+
+    locale.to_file(Path::new(&name))?;
 
     Ok(())
 }
@@ -163,5 +208,3 @@ pub fn unzip(target: &Path, dest: &Path) -> Result<()> {
 
     Ok(())
 }
-
-const ALL_LOCALES: &[&str] = &["en_US", "es_ES"];
