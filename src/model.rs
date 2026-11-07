@@ -530,9 +530,9 @@ fn quote(value: &str) -> String {
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
-        // Some CLDR values use a no-break space, a plain space is simpler and renders
-        // the same in a locale definition.
-        .replace('\u{00a0}', " ");
+        // Some CLDR values use no-break spaces (regular or narrow), a plain space is
+        // simpler and renders the same in a locale definition.
+        .replace(['\u{00a0}', '\u{202f}'], " ");
 
     format!("\"{escaped}\"")
 }

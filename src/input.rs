@@ -1,11 +1,17 @@
+use std::path::Path;
+
 use crate::model::{Model, ModelMessages, ModelMonetary, ModelNumeric, ModelTime};
 use anyhow::{Context, Result, anyhow};
-use reqwest::StatusCode;
 use roxmltree::{Document, ParsingOptions};
+use tokio::fs::read_to_string;
 
-pub async fn get_locale_data(language: &str, region: &str) -> Result<Model> {
-    let tree_set_str = TreeSetStr::get(language, region).await?;
-    from_xml(region, &tree_set_str)
+pub async fn get_locale_data(
+    language: &str,
+    region: &str,
+    messages: ModelMessages,
+) -> Result<Model> {
+    let tree_set_str = TreeSetStr::get(Path::new("cldr/common"), language, region).await?;
+    from_xml(region, &tree_set_str, messages)
 }
 
 struct TreeSetStr {
@@ -16,24 +22,21 @@ struct TreeSetStr {
 }
 
 impl TreeSetStr {
-    async fn get(language: &str, region: &str) -> Result<Self> {
-        let ln_url = format!(
-            "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/main/{language}.xml"
-        );
-        let reg_url = format!(
-            "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/main/{language}_{region}.xml"
-        );
-
+    async fn get(cldr_common: &Path, language: &str, region: &str) -> Result<Self> {
         const SUPPLEMENTAL_URL: &str = "https://raw.githubusercontent.com/unicode-org/cldr/refs/heads/main/common/supplemental/supplementalData.xml";
         const MAIN_ROOT_URL: &str = "https://raw.githubusercontent.com/unicode-org/cldr/96e54b273d2da4ec6fbad350ba19ff23fa24a588/common/main/root.xml";
 
         Ok(TreeSetStr {
-            suplemental_data: get_text(SUPPLEMENTAL_URL).await?,
-            main_language: get_text(&ln_url).await?,
+            suplemental_data: read_to_string(SUPPLEMENTAL_URL).await?,
+            main_language: read_to_string(&cldr_common.join(&format!("main/{language}.xml")))
+                .await?,
             // Not every locale has a file for its region, when it doesn't exist the
             // data is inherited from the language file.
-            main_region: get_optional_text(&reg_url).await?,
-            main_root: get_text(MAIN_ROOT_URL).await?,
+            main_region: get_optional_text(
+                &cldr_common.join(&format!("main/{language}_{region}.xml")),
+            )
+            .await,
+            main_root: read_to_string(MAIN_ROOT_URL).await?,
         })
     }
 
@@ -366,7 +369,7 @@ impl simplecss::Element for XmlNode<'_, '_> {
     }
 }
 
-fn from_xml(region: &str, set: &TreeSetStr) -> Result<Model> {
+fn from_xml(region: &str, set: &TreeSetStr, messages: ModelMessages) -> Result<Model> {
     let tree_set_doc = set.parse()?;
     let tree_set = tree_set_doc.get_roots(region);
 
@@ -374,7 +377,7 @@ fn from_xml(region: &str, set: &TreeSetStr) -> Result<Model> {
         time: extract_time(&tree_set)?,
         numeric: extract_numeric(&tree_set)?,
         monetary: extract_monetary(&tree_set)?,
-        messages: ModelMessages::default(),
+        messages,
     })
 }
 
@@ -1088,22 +1091,10 @@ fn extract_monetary(tree_set: &TreeSet<'_>) -> Result<ModelMonetary> {
     })
 }
 
-async fn get_text(url: &str) -> Result<String> {
-    let resp = reqwest::get(url).await?;
-    if resp.status() == StatusCode::NOT_FOUND {
-        return Err(anyhow!("Not found: {url}"));
-    }
-
-    Ok(resp.text().await?)
-}
-
 /// Fetches the URL, a missing document is returned as an empty locale so its data is
 /// inherited from the other documents.
-async fn get_optional_text(url: &str) -> Result<String> {
-    let resp = reqwest::get(url).await?;
-    if resp.status() == StatusCode::NOT_FOUND {
-        return Ok(EMPTY_LOCALE.to_string());
-    }
-
-    Ok(resp.text().await?)
+async fn get_optional_text(path: &Path) -> String {
+    tokio::fs::read_to_string(path)
+        .await
+        .unwrap_or_else(|_| EMPTY_LOCALE.to_string())
 }
