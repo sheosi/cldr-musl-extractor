@@ -26,6 +26,10 @@ async fn main() {
 
     println!("Checking CLDR and musl repos");
 
+    tokio::fs::create_dir_all("output")
+        .await
+        .expect("Failed to create output directory");
+
     if let Err(error) = try_join!(
         get_repository(
             "https://github.com/unicode-org/cldr/archive/refs/heads/master.zip",
@@ -90,9 +94,19 @@ async fn all_locales() -> Result<Vec<String>> {
             continue;
         };
 
-        // The generated locale name is language + region, so scripts and variants
-        // aren't supported.
-        if parsed.region.is_none() || parsed.script.is_some() || parsed.variants().len() > 0 {
+        let Some(region) = parsed.region else {
+            continue;
+        };
+
+        // Numeric regions are UN M.49 macroregions such as 001 (World), 150 (Europe)
+        // or 419 (Latin America), they have no currency. Scripts and variants aren't
+        // part of the generated locale name either.
+        let region = region.as_str();
+
+        if region.chars().all(|character| character.is_ascii_digit())
+            || parsed.script.is_some()
+            || parsed.variants().len() > 0
+        {
             continue;
         }
 
@@ -129,7 +143,7 @@ async fn work_locale_inner(locale_str: &str) -> Result<()> {
         format!("{lang}_{region}")
     };
 
-    locale.to_file(Path::new(&name))?;
+    locale.to_file(&Path::new("output").join(&name))?;
 
     Ok(())
 }

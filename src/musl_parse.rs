@@ -9,7 +9,7 @@ use crate::model::ModelMessages;
 pub async fn parse_messages(lang: &str, region: &str) -> Result<ModelMessages> {
     let path = PathBuf::from(format!("musl-locales/{lang}_{region}"));
     if !path.exists() {
-        eprintln!("Musl locale not found for {lang}_{region}");
+        println!("INFO: Musl locale not found for {lang}_{region}");
         return Ok(ModelMessages::default());
     };
 
