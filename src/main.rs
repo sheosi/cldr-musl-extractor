@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::Parser;
 use futures_util::StreamExt;
@@ -46,6 +47,14 @@ async fn main() {
         return;
     }
 
+    let cldr = match input::CldrData::load(Path::new("./cldr/common")).await {
+        Ok(cldr) => Arc::new(cldr),
+        Err(error) => {
+            eprintln!("Failed to load CLDR data: {error:?}");
+            return;
+        }
+    };
+
     let targets: Vec<String> = if args.targets.first().is_some_and(|target| target == "all") {
         match all_locales().await {
             Ok(locales) => locales,
@@ -61,7 +70,7 @@ async fn main() {
     let mut tasks = JoinSet::new();
 
     for target in targets {
-        tasks.spawn(work_locale(target));
+        tasks.spawn(work_locale(cldr.clone(), target));
     }
 
     while let Some(result) = tasks.join_next().await {
@@ -117,7 +126,7 @@ async fn all_locales() -> Result<Vec<String>> {
     Ok(locales)
 }
 
-async fn work_locale_inner(locale_str: &str) -> Result<()> {
+async fn work_locale_inner(cldr: &input::CldrData, locale_str: &str) -> Result<()> {
     let parsed_langid: LanguageIdentifier = locale_str
         .parse()
         .context("couldn't parse as language identifier")?;
@@ -133,7 +142,7 @@ async fn work_locale_inner(locale_str: &str) -> Result<()> {
         .await
         .context("while parsing musl messages")?;
 
-    let locale = input::get_locale_data(lang, &region, messages)
+    let locale = input::get_locale_data(cldr, lang, &region, messages)
         .await
         .context("while parsing cldr data")?;
 
@@ -148,8 +157,8 @@ async fn work_locale_inner(locale_str: &str) -> Result<()> {
     Ok(())
 }
 
-async fn work_locale(locale_str: String) {
-    if let Err(e) = work_locale_inner(&locale_str).await {
+async fn work_locale(cldr: Arc<input::CldrData>, locale_str: String) {
+    if let Err(e) = work_locale_inner(&cldr, &locale_str).await {
         eprintln!("Locale {locale_str} failed: {e:?}")
     }
 }

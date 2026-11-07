@@ -1,82 +1,64 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::model::{Model, ModelMessages, ModelMonetary, ModelNumeric, ModelTime};
 use anyhow::{Context, Result, anyhow};
 use roxmltree::{Document, ParsingOptions};
 use tokio::fs::read_to_string;
 
+fn parse_xml<'a>(xml: &'a str) -> Result<Document<'a>> {
+    Ok(Document::parse_with_options(
+        xml,
+        ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )?)
+}
+
+/// The CLDR documents shared by every locale.
+pub struct CldrData {
+    common: PathBuf,
+    root: Document<'static>,
+    supplemental: Document<'static>,
+}
+
+impl CldrData {
+    pub async fn load(cldr_common: &Path) -> Result<Self> {
+        let root = read_to_string(cldr_common.join("main/root.xml"))
+            .await
+            .context("while reading root")?;
+        let supplemental = read_to_string(cldr_common.join("supplemental/supplementalData.xml"))
+            .await
+            .context("while reading supplemental")?;
+
+        // The documents borrow their source strings, so keep them alive for the
+        // lifetime of the process.
+        let root: &'static str = Box::leak(root.into_boxed_str());
+        let supplemental: &'static str = Box::leak(supplemental.into_boxed_str());
+
+        Ok(Self {
+            common: cldr_common.to_path_buf(),
+            root: parse_xml(root).context("while parsing root")?,
+            supplemental: parse_xml(supplemental).context("while parsing supplemental data")?,
+        })
+    }
+}
+
 pub async fn get_locale_data(
+    cldr: &CldrData,
     language: &str,
     region: &str,
     messages: ModelMessages,
 ) -> Result<Model> {
-    let tree_set_str = TreeSetStr::get(Path::new("./cldr/common"), language, region).await?;
-    from_xml(region, &tree_set_str, messages)
-}
+    let main_language = read_to_string(cldr.common.join(&format!("main/{language}.xml")))
+        .await
+        .context("while reading main language")?;
+    // Not every locale has a file for its region, when it doesn't exist the
+    // data is inherited from the language file.
+    let main_region =
+        get_optional_text(&cldr.common.join(&format!("main/{language}_{region}.xml"))).await;
 
-struct TreeSetStr {
-    suplemental_data: String,
-    main_language: String,
-    main_region: String,
-    main_root: String,
-}
-
-impl TreeSetStr {
-    async fn get(cldr_common: &Path, language: &str, region: &str) -> Result<Self> {
-        Ok(TreeSetStr {
-            suplemental_data: read_to_string(cldr_common.join("supplemental/supplementalData.xml"))
-                .await
-                .context("while reading supplemental")?,
-            main_language: read_to_string(&cldr_common.join(&format!("main/{language}.xml")))
-                .await?,
-            // Not every locale has a file for its region, when it doesn't exist the
-            // data is inherited from the language file.
-            main_region: get_optional_text(
-                &cldr_common.join(&format!("main/{language}_{region}.xml")),
-            )
-            .await,
-            main_root: read_to_string(cldr_common.join("main/root.xml")).await?,
-        })
-    }
-
-    fn parse<'a>(&'a self) -> Result<TreeSetDoc<'a>> {
-        fn parse_xml<'a>(xml: &'a str) -> Result<Document<'a>> {
-            Ok(Document::parse_with_options(
-                xml,
-                ParsingOptions {
-                    allow_dtd: true,
-                    ..Default::default()
-                },
-            )?)
-        }
-
-        Ok(TreeSetDoc {
-            suplemental_data: parse_xml(&self.suplemental_data)
-                .context("While parsing suplemental data")?,
-            main_region: parse_xml(&self.main_region).context("While parsing main region")?,
-            main_language: parse_xml(&self.main_language).context("Wihle parsing main language")?,
-            main_root: parse_xml(&self.main_root).context("While parsing main root")?,
-        })
-    }
-}
-
-struct TreeSetDoc<'a> {
-    suplemental_data: Document<'a>,
-    main_language: Document<'a>,
-    main_region: Document<'a>,
-    main_root: Document<'a>,
-}
-
-impl<'a> TreeSetDoc<'a> {
-    fn get_roots(&'a self, region: &'a str) -> TreeSet<'a> {
-        TreeSet {
-            region,
-            suplemental_data: XmlNode(self.suplemental_data.root_element()),
-            main_language: XmlNode(self.main_language.root_element()),
-            main_region: XmlNode(self.main_region.root_element()),
-            main_root: XmlNode(self.main_root.root_element()),
-        }
-    }
+    from_xml(cldr, region, &main_language, &main_region, messages)
 }
 
 struct TreeSet<'a> {
@@ -354,9 +336,23 @@ impl simplecss::Element for XmlNode<'_, '_> {
     }
 }
 
-fn from_xml(region: &str, set: &TreeSetStr, messages: ModelMessages) -> Result<Model> {
-    let tree_set_doc = set.parse()?;
-    let tree_set = tree_set_doc.get_roots(region);
+fn from_xml<'a>(
+    cldr: &'a CldrData,
+    region: &'a str,
+    main_language: &'a str,
+    main_region: &'a str,
+    messages: ModelMessages,
+) -> Result<Model> {
+    let main_language = parse_xml(main_language).context("while parsing main language")?;
+    let main_region = parse_xml(main_region).context("while parsing main region")?;
+
+    let tree_set = TreeSet {
+        region,
+        suplemental_data: XmlNode(cldr.supplemental.root_element()),
+        main_language: XmlNode(main_language.root_element()),
+        main_region: XmlNode(main_region.root_element()),
+        main_root: XmlNode(cldr.root.root_element()),
+    };
 
     Ok(Model {
         time: extract_time(&tree_set)?,
