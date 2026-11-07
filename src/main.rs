@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use futures_util::StreamExt;
-use tokio::{io::AsyncWriteExt, try_join};
+use tokio::{io::AsyncWriteExt, task::JoinSet, try_join};
 use unic_langid::LanguageIdentifier;
 
 use anyhow::{Context, Result};
@@ -42,13 +42,24 @@ async fn main() {
         return;
     }
 
-    if let Some("all") = args.targets.first().map(|s| s.as_str()) {
-        for locale in ALL_LOCALES {
-            work_locale(locale).await;
-        }
+    let targets: Vec<String> = if args.targets.first().is_some_and(|target| target == "all") {
+        ALL_LOCALES
+            .iter()
+            .map(|locale| (*locale).to_string())
+            .collect()
     } else {
-        for target in &args.targets {
-            work_locale(target).await;
+        args.targets
+    };
+
+    let mut tasks = JoinSet::new();
+
+    for target in targets {
+        tasks.spawn(work_locale(target));
+    }
+
+    while let Some(result) = tasks.join_next().await {
+        if let Err(error) = result {
+            eprintln!("Locale task failed: {error:?}");
         }
     }
 }
@@ -78,8 +89,8 @@ async fn work_locale_inner(locale_str: &str) -> Result<()> {
     Ok(())
 }
 
-async fn work_locale(locale_str: &str) {
-    if let Err(e) = work_locale_inner(locale_str).await {
+async fn work_locale(locale_str: String) {
+    if let Err(e) = work_locale_inner(&locale_str).await {
         eprintln!("Locale {locale_str} failed: {e:?}")
     }
 }
