@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use tokio::{io::AsyncWriteExt, try_join};
 use unic_langid::LanguageIdentifier;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 mod input;
 mod model;
@@ -30,12 +30,12 @@ async fn main() {
         get_repository(
             "https://github.com/unicode-org/cldr/archive/refs/heads/master.zip",
             "cldr",
-            Path::new("./")
+            Path::new("./cldr")
         ),
         get_repository(
-            "https://codeberg.org/musl/musl-locales/refs/heads/master.zip",
+            "https://codeberg.org/musl/musl-locales/archive/main:locales.zip",
             "musl-locales",
-            Path::new("./")
+            Path::new("./musl-locales")
         )
     ) {
         eprintln!("Failed to get repositories: {error:?}");
@@ -56,7 +56,7 @@ async fn main() {
 async fn work_locale_inner(locale_str: &str) -> Result<()> {
     let parsed_langid: LanguageIdentifier = locale_str
         .parse()
-        .expect("Failed to parse input as language identifier");
+        .context("couldn't parse as language identifier")?;
 
     let lang = parsed_langid.language.as_str();
 
@@ -65,9 +65,13 @@ async fn work_locale_inner(locale_str: &str) -> Result<()> {
         .map(|r| r.as_str().to_string())
         .unwrap_or("".to_string());
 
-    let messages = musl_parse::parse_messages(lang, &region).await?;
+    let messages = musl_parse::parse_messages(lang, &region)
+        .await
+        .context("while parsing musl messages")?;
 
-    let locale = input::get_locale_data(lang, &region, messages).await?;
+    let locale = input::get_locale_data(lang, &region, messages)
+        .await
+        .context("while parsing cldr data")?;
 
     locale.to_file(Path::new(&format!("{}_{}", lang, &region)))?;
 
@@ -87,7 +91,12 @@ async fn get_repository(url: &str, tmp_name: &str, dest: &Path) -> Result<()> {
 
     let response = reqwest::get(url).await?.error_for_status()?;
     let zip_file = PathBuf::from(format!("/tmp/cldr_musl_extractor/{tmp_name}.zip"));
-    let mut file = tokio::fs::File::create(&zip_file).await?;
+    tokio::fs::create_dir_all("/tmp/cldr_musl_extractor")
+        .await
+        .context("while creating tmp dir")?;
+    let mut file = tokio::fs::File::create(&zip_file)
+        .await
+        .context("while creating zip file")?;
 
     let mut stream = response.bytes_stream();
 

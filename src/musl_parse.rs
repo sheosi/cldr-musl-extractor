@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{Result, anyhow};
@@ -8,8 +7,9 @@ use crate::model::ModelMessages;
 /// Returns the messages saved for a language, if the file doesn't exist, returns
 /// the default en_US messages, if there's any other error it is returned.
 pub async fn parse_messages(lang: &str, region: &str) -> Result<ModelMessages> {
-    let path = PathBuf::from(format!("musl-locales/locales/{lang}_{region}"));
+    let path = PathBuf::from(format!("musl-locales/{lang}_{region}"));
     if !path.exists() {
+        eprintln!("Musl locale not found for {lang}_{region}");
         return Ok(ModelMessages::default());
     };
 
