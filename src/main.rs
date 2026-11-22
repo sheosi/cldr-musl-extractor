@@ -38,7 +38,7 @@ async fn main() {
             Path::new("./cldr")
         ),
         get_repository(
-            "https://codeberg.org/musl/musl-locales/archive/main:locales.zip",
+            "https://codeberg.org/musl/musl-locales/archive/main.zip",
             "musl-locales",
             Path::new("./musl-locales")
         )
