@@ -45,6 +45,7 @@ int_p_sign_posn {{ monetary.int_p_sign_posn }}
 int_n_sign_posn {{ monetary.int_n_sign_posn }}
 END LC_MONETARY
 
+{%~ if let Some(messages) = messages -%}
 LC_MESSAGES
 yesexpr {{ self::quote(messages.yesexpr) }}
 noexpr {{ self::quote(messages.noexpr) }}
@@ -219,3 +220,4 @@ TRY_AGAIN {{ self::quote(messages.try_again) }}
 NO_RECOVERY {{ self::quote(messages.no_recovery) }}
 NO_DATA {{ self::quote(messages.no_data) }}
 END LC_MESSAGES
+{%~ endif -%}

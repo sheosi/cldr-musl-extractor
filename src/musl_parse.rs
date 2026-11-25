@@ -6,15 +6,15 @@ use crate::model::ModelMessages;
 
 /// Returns the messages saved for a language, if the file doesn't exist, returns
 /// the default en_US messages, if there's any other error it is returned.
-pub async fn parse_messages(lang: &str, region: &str) -> Result<ModelMessages> {
+pub async fn parse_messages(lang: &str, region: &str) -> Result<Option<ModelMessages>> {
     let path = PathBuf::from(format!("musl-locales/{lang}_{region}"));
     if !path.exists() {
         println!("INFO: Musl locale not found for {lang}_{region}");
-        return Ok(ModelMessages::default());
+        return Ok(None);
     };
 
     let file_contents = tokio::fs::read_to_string(path).await?;
-    parse_messages_of_content(&file_contents)
+    parse_messages_of_content(&file_contents).map(Option::Some)
 }
 
 fn parse_messages_of_content(locale_content: &str) -> Result<ModelMessages> {

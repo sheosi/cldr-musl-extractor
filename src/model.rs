@@ -9,7 +9,7 @@ pub struct Model {
     pub time: ModelTime,
     pub numeric: ModelNumeric,
     pub monetary: ModelMonetary,
-    pub messages: ModelMessages,
+    pub messages: Option<ModelMessages>,
 }
 
 impl Model {

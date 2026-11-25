@@ -48,7 +48,7 @@ pub async fn get_locale_data(
     cldr: &CldrData,
     language: &str,
     region: &str,
-    messages: ModelMessages,
+    messages: Option<ModelMessages>,
 ) -> Result<Model> {
     let main_language = read_to_string(cldr.common.join(&format!("main/{language}.xml")))
         .await
@@ -316,7 +316,7 @@ fn from_xml<'a>(
     region: &'a str,
     main_language: &'a str,
     main_region: &'a str,
-    messages: ModelMessages,
+    messages: Option<ModelMessages>,
 ) -> Result<Model> {
     let main_language = parse_xml(main_language).context("while parsing main language")?;
     let main_region = parse_xml(main_region).context("while parsing main region")?;
