@@ -87,35 +87,10 @@ impl<'a> TreeSet<'a> {
         vec![self.main_region, self.main_language, self.main_root]
     }
 
-    /// The numbering systems to look for, the default one of the locale comes first.
+    /// The numbering systems to look for. Always use Latin (`latn`) so generated
+    /// locales use Latin digits and Latin number formatting.
     fn numbering_systems(&self) -> Vec<String> {
-        let mut systems = Vec::new();
-
-        for document in self.documents() {
-            let Some(numbering_system) = document
-                .select("numbers > defaultNumberingSystem")
-                .and_then(|node| node.text())
-            else {
-                continue;
-            };
-
-            // The value may be inherited from the parent locale.
-            if numbering_system == INHERITED {
-                continue;
-            }
-
-            if !systems.iter().any(|system| system == numbering_system) {
-                systems.push(numbering_system.to_string());
-            }
-
-            break;
-        }
-
-        if !systems.iter().any(|system| system == "latn") {
-            systems.push("latn".to_string());
-        }
-
-        systems
+        vec!["latn".to_string()]
     }
 
     /// The default numbering system of the locale.
@@ -484,11 +459,17 @@ fn to_formatted_strftime(pattern: &str, arguments: &[(&str, &str)]) -> String {
 fn symbol(tree_set: &TreeSet<'_>, name: &str) -> Option<String> {
     let number_system = tree_set.numbering_system();
 
-    tree_set
-        .find(&format!(
-            "numbers > symbols[numberSystem='{number_system}'] > {name}"
-        ))
-        .map(str::to_string)
+    let value = tree_set.find(&format!(
+        "numbers > symbols[numberSystem='{number_system}'] > {name}"
+    ))?;
+
+    // Some locales use an Arabic-style decimal mark even in the Latin numbering
+    // system; normalize it to an ASCII dot.
+    if name == "decimal" && value == "٫" {
+        return Some(".".to_string());
+    }
+
+    Some(value.to_string())
 }
 
 /// The decimal pattern of the default numbering system of the locale.
