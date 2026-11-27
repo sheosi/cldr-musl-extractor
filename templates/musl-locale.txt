@@ -47,177 +47,523 @@ END LC_MONETARY
 
 {%~ if let Some(messages) = messages -%}
 LC_MESSAGES
-yesexpr {{ self::quote(messages.yesexpr) }}
-noexpr {{ self::quote(messages.noexpr) }}
-E_ {{ self::quote(messages.e_) }}
-E0 {{ self::quote(messages.e0) }}
-EPERM {{ self::quote(messages.eperm) }}
-ENOENT {{ self::quote(messages.enoent) }}
-ESRCH {{ self::quote(messages.esrch) }}
-EINTR {{ self::quote(messages.eintr) }}
-EIO {{ self::quote(messages.eio) }}
-ENXIO {{ self::quote(messages.enxio) }}
-E2BIG {{ self::quote(messages.e2big) }}
-ENOEXEC {{ self::quote(messages.enoexec) }}
-EBADF {{ self::quote(messages.ebadf) }}
-ECHILD {{ self::quote(messages.echild) }}
-EAGAIN {{ self::quote(messages.eagain) }}
-ENOMEM {{ self::quote(messages.enomem) }}
-EACCES {{ self::quote(messages.eacces) }}
-EFAULT {{ self::quote(messages.efault) }}
-ENOTBLK {{ self::quote(messages.enotblk) }}
-EBUSY {{ self::quote(messages.ebusy) }}
-EEXIST {{ self::quote(messages.eexist) }}
-EXDEV {{ self::quote(messages.exdev) }}
-ENODEV {{ self::quote(messages.enodev) }}
-ENOTDIR {{ self::quote(messages.enotdir) }}
-EISDIR {{ self::quote(messages.eisdir) }}
-EINVAL {{ self::quote(messages.einval) }}
-ENFILE {{ self::quote(messages.enfile) }}
-EMFILE {{ self::quote(messages.emfile) }}
-ENOTTY {{ self::quote(messages.enotty) }}
-ETXTBSY {{ self::quote(messages.etxtbsy) }}
-EFBIG {{ self::quote(messages.efbig) }}
-ENOSPC {{ self::quote(messages.enospc) }}
-ESPIPE {{ self::quote(messages.espipe) }}
-EROFS {{ self::quote(messages.erofs) }}
-EMLINK {{ self::quote(messages.emlink) }}
-EPIPE {{ self::quote(messages.epipe) }}
-EDOM {{ self::quote(messages.edom) }}
-ERANGE {{ self::quote(messages.erange) }}
-EDEADLK {{ self::quote(messages.edeadlk) }}
-ENAMETOOLONG {{ self::quote(messages.enametoolong) }}
-ENOLCK {{ self::quote(messages.enolck) }}
-ENOSYS {{ self::quote(messages.enosys) }}
-ENOTEMPTY {{ self::quote(messages.enotempty) }}
-ELOOP {{ self::quote(messages.eloop) }}
-EWOULDBLOCK {{ self::quote(messages.ewouldblock) }}
-ENOMSG {{ self::quote(messages.enomsg) }}
-EIDRM {{ self::quote(messages.eidrm) }}
-ECHRNG {{ self::quote(messages.echrng) }}
-EL2NSYNC {{ self::quote(messages.el2nsync) }}
-EL3HLT {{ self::quote(messages.el3hlt) }}
-EL3RST {{ self::quote(messages.el3rst) }}
-ELNRNG {{ self::quote(messages.elnrng) }}
-EUNATCH {{ self::quote(messages.eunatch) }}
-ENOCSI {{ self::quote(messages.enocsi) }}
-EL2HLT {{ self::quote(messages.el2hlt) }}
-EBADE {{ self::quote(messages.ebade) }}
-EBADR {{ self::quote(messages.ebadr) }}
-EXFULL {{ self::quote(messages.exfull) }}
-ENOANO {{ self::quote(messages.enoano) }}
-EBADRQC {{ self::quote(messages.ebadrqc) }}
-EBADSLT {{ self::quote(messages.ebadslt) }}
-EDEADLOCK {{ self::quote(messages.edeadlock) }}
-EBFONT {{ self::quote(messages.ebfont) }}
-ENOSTR {{ self::quote(messages.enostr) }}
-ENODATA {{ self::quote(messages.enodata) }}
-ETIME {{ self::quote(messages.etime) }}
-ENOSR {{ self::quote(messages.enosr) }}
-ENONET {{ self::quote(messages.enonet) }}
-ENOPKG {{ self::quote(messages.enopkg) }}
-EREMOTE {{ self::quote(messages.eremote) }}
-ENOLINK {{ self::quote(messages.enolink) }}
-EADV {{ self::quote(messages.eadv) }}
-ESRMNT {{ self::quote(messages.esrmnt) }}
-ECOMM {{ self::quote(messages.ecomm) }}
-EPROTO {{ self::quote(messages.eproto) }}
-EMULTIHOP {{ self::quote(messages.emultihop) }}
-EDOTDOT {{ self::quote(messages.edotdot) }}
-EBADMSG {{ self::quote(messages.ebadmsg) }}
-EOVERFLOW {{ self::quote(messages.eoverflow) }}
-ENOTUNIQ {{ self::quote(messages.enotuniq) }}
-EBADFD {{ self::quote(messages.ebadfd) }}
-EREMCHG {{ self::quote(messages.eremchg) }}
-ELIBACC {{ self::quote(messages.elibacc) }}
-ELIBBAD {{ self::quote(messages.elibbad) }}
-ELIBSCN {{ self::quote(messages.elibscn) }}
-ELIBMAX {{ self::quote(messages.elibmax) }}
-ELIBEXEC {{ self::quote(messages.elibexec) }}
-EILSEQ {{ self::quote(messages.eilseq) }}
-ERESTART {{ self::quote(messages.erestart) }}
-ESTRPIPE {{ self::quote(messages.estrpipe) }}
-EUSERS {{ self::quote(messages.eusers) }}
-ENOTSOCK {{ self::quote(messages.enotsock) }}
-EDESTADDRREQ {{ self::quote(messages.edestaddrreq) }}
-EMSGSIZE {{ self::quote(messages.emsgsize) }}
-EPROTOTYPE {{ self::quote(messages.eprototype) }}
-ENOPROTOOPT {{ self::quote(messages.enoprotoopt) }}
-EPROTONOSUPPORT {{ self::quote(messages.eprotonosupport) }}
-ESOCKTNOSUPPORT {{ self::quote(messages.esocktnosupport) }}
-EOPNOTSUPP {{ self::quote(messages.eopnotsupp) }}
-ENOTSUP {{ self::quote(messages.enotsup) }}
-EPFNOSUPPORT {{ self::quote(messages.epfnosupport) }}
-EAFNOSUPPORT {{ self::quote(messages.eafnosupport) }}
-EADDRINUSE {{ self::quote(messages.eaddrinuse) }}
-EADDRNOTAVAIL {{ self::quote(messages.eaddrnotavail) }}
-ENETDOWN {{ self::quote(messages.enetdown) }}
-ENETUNREACH {{ self::quote(messages.enetunreach) }}
-ENETRESET {{ self::quote(messages.enetreset) }}
-ECONNABORTED {{ self::quote(messages.econnaborted) }}
-ECONNRESET {{ self::quote(messages.econnreset) }}
-ENOBUFS {{ self::quote(messages.enobufs) }}
-EISCONN {{ self::quote(messages.eisconn) }}
-ENOTCONN {{ self::quote(messages.enotconn) }}
-ESHUTDOWN {{ self::quote(messages.eshutdown) }}
-ETOOMANYREFS {{ self::quote(messages.etoomanyrefs) }}
-ETIMEDOUT {{ self::quote(messages.etimedout) }}
-ECONNREFUSED {{ self::quote(messages.econnrefused) }}
-EHOSTDOWN {{ self::quote(messages.ehostdown) }}
-EHOSTUNREACH {{ self::quote(messages.ehostunreach) }}
-EALREADY {{ self::quote(messages.ealready) }}
-EINPROGRESS {{ self::quote(messages.einprogress) }}
-ESTALE {{ self::quote(messages.estale) }}
-EUCLEAN {{ self::quote(messages.euclean) }}
-ENOTNAM {{ self::quote(messages.enotnam) }}
-ENAVAIL {{ self::quote(messages.enavail) }}
-EISNAM {{ self::quote(messages.eisnam) }}
-EREMOTEIO {{ self::quote(messages.eremoteio) }}
-EDQUOT {{ self::quote(messages.edquot) }}
-ENOMEDIUM {{ self::quote(messages.enomedium) }}
-EMEDIUMTYPE {{ self::quote(messages.emediumtype) }}
-ECANCELED {{ self::quote(messages.ecanceled) }}
-ENOKEY {{ self::quote(messages.enokey) }}
-EKEYEXPIRED {{ self::quote(messages.ekeyexpired) }}
-EKEYREVOKED {{ self::quote(messages.ekeyrevoked) }}
-EKEYREJECTED {{ self::quote(messages.ekeyrejected) }}
-EOWNERDEAD {{ self::quote(messages.eownerdead) }}
-ENOTRECOVERABLE {{ self::quote(messages.enotrecoverable) }}
-ERFKILL {{ self::quote(messages.erfkill) }}
-EHWPOISON {{ self::quote(messages.ehwpoison) }}
-REG__ {{ self::quote(messages.reg__) }}
-REG_OK {{ self::quote(messages.reg_ok) }}
-REG_NOMATCH {{ self::quote(messages.reg_nomatch) }}
-REG_BADPAT {{ self::quote(messages.reg_badpat) }}
-REG_ECOLLATE {{ self::quote(messages.reg_ecollate) }}
-REG_ECTYPE {{ self::quote(messages.reg_ectype) }}
-REG_EESCAPE {{ self::quote(messages.reg_eescape) }}
-REG_ESUBREG {{ self::quote(messages.reg_esubreg) }}
-REG_EBRACK {{ self::quote(messages.reg_ebrack) }}
-REG_EPAREN {{ self::quote(messages.reg_eparen) }}
-REG_EBRACE {{ self::quote(messages.reg_ebrace) }}
-REG_BADBR {{ self::quote(messages.reg_badbr) }}
-REG_ERANGE {{ self::quote(messages.reg_erange) }}
-REG_ESPACE {{ self::quote(messages.reg_espace) }}
-REG_BADRPT {{ self::quote(messages.reg_badrpt) }}
-EAI__ {{ self::quote(messages.eai__) }}
-EAI_0 {{ self::quote(messages.eai_0) }}
-EAI_BADFLAGS {{ self::quote(messages.eai_badflags) }}
-EAI_NONAME {{ self::quote(messages.eai_noname) }}
-EAI_AGAIN {{ self::quote(messages.eai_again) }}
-EAI_FAIL {{ self::quote(messages.eai_fail) }}
-EAI_NODATA {{ self::quote(messages.eai_nodata) }}
-EAI_FAMILY {{ self::quote(messages.eai_family) }}
-EAI_SOCKTYPE {{ self::quote(messages.eai_socktype) }}
-EAI_SERVICE {{ self::quote(messages.eai_service) }}
-EAI_MEMORY {{ self::quote(messages.eai_memory) }}
-EAI_SYSTEM {{ self::quote(messages.eai_system) }}
-EAI_OVERFLOW {{ self::quote(messages.eai_overflow) }}
-H_ {{ self::quote(messages.h_) }}
-H0 {{ self::quote(messages.h0) }}
-HOST_NOT_FOUND {{ self::quote(messages.host_not_found) }}
-TRY_AGAIN {{ self::quote(messages.try_again) }}
-NO_RECOVERY {{ self::quote(messages.no_recovery) }}
-NO_DATA {{ self::quote(messages.no_data) }}
+
+{%~ if let Some(yesexpr) = messages.yesexpr -%}
+yesexpr {{ self::quote(yesexpr) }}
+{%~ endif -%}
+
+{%~ if let Some(noexpr) = messages.noexpr -%}
+noexpr {{ self::quote(noexpr) }}
+{%~ endif -%}
+{%~ if let Some(e_) = messages.e_ -%}
+E_ {{ self::quote(e_) }}
+{%~ endif -%}
+{%~ if let Some(e0) = messages.e0 -%}
+E0 {{ self::quote(e0) }}
+{%~ endif -%}
+{%~ if let Some(eperm) = messages.eperm -%}
+EPERM {{ self::quote(eperm) }}
+{%~ endif -%}
+{%~ if let Some(enoent) = messages.enoent -%}
+ENOENT {{ self::quote(enoent) }}
+{%~ endif -%}
+{%~ if let Some(esrch) = messages.esrch -%}
+ESRCH {{ self::quote(esrch) }}
+{%~ endif -%}
+{%~ if let Some(eintr) = messages.eintr -%}
+EINTR {{ self::quote(eintr) }}
+{%~ endif -%}
+{%~ if let Some(eio) = messages.eio -%}
+EIO {{ self::quote(eio) }}
+{%~ endif -%}
+{%~ if let Some(enxio) = messages.enxio -%}
+ENXIO {{ self::quote(enxio) }}
+{%~ endif -%}
+{%~ if let Some(e2big) = messages.e2big -%}
+E2BIG {{ self::quote(e2big) }}
+{%~ endif -%}
+{%~ if let Some(enoexec) = messages.enoexec -%}
+ENOEXEC {{ self::quote(enoexec) }}
+{%~ endif -%}
+{%~ if let Some(ebadf) = messages.ebadf -%}
+EBADF {{ self::quote(ebadf) }}
+{%~ endif -%}
+{%~ if let Some(echild) = messages.echild -%}
+ECHILD {{ self::quote(echild) }}
+{%~ endif -%}
+{%~ if let Some(eagain) = messages.eagain -%}
+EAGAIN {{ self::quote(eagain) }}
+{%~ endif -%}
+{%~ if let Some(enomem) = messages.enomem -%}
+ENOMEM {{ self::quote(enomem) }}
+{%~ endif -%}
+{%~ if let Some(eacces) = messages.eacces -%}
+EACCES {{ self::quote(eacces) }}
+{%~ endif -%}
+{%~ if let Some(efault) = messages.efault -%}
+EFAULT {{ self::quote(efault) }}
+{%~ endif -%}
+{%~ if let Some(enotblk) = messages.enotblk -%}
+ENOTBLK {{ self::quote(enotblk) }}
+{%~ endif -%}
+{%~ if let Some(ebusy) = messages.ebusy -%}
+EBUSY {{ self::quote(ebusy) }}
+{%~ endif -%}
+{%~ if let Some(eexist) = messages.eexist -%}
+EEXIST {{ self::quote(eexist) }}
+{%~ endif -%}
+{%~ if let Some(exdev) = messages.exdev -%}
+EXDEV {{ self::quote(exdev) }}
+{%~ endif -%}
+{%~ if let Some(enodev) = messages.enodev -%}
+ENODEV {{ self::quote(enodev) }}
+{%~ endif -%}
+{%~ if let Some(enotdir) = messages.enotdir -%}
+ENOTDIR {{ self::quote(enotdir) }}
+{%~ endif -%}
+{%~ if let Some(eisdir) = messages.eisdir -%}
+EISDIR {{ self::quote(eisdir) }}
+{%~ endif -%}
+{%~ if let Some(einval) = messages.einval -%}
+EINVAL {{ self::quote(einval) }}
+{%~ endif -%}
+{%~ if let Some(enfile) = messages.enfile -%}
+ENFILE {{ self::quote(enfile) }}
+{%~ endif -%}
+{%~ if let Some(emfile) = messages.emfile -%}
+EMFILE {{ self::quote(emfile) }}
+{%~ endif -%}
+{%~ if let Some(enotty) = messages.enotty -%}
+ENOTTY {{ self::quote(enotty) }}
+{%~ endif -%}
+{%~ if let Some(etxtbsy) = messages.etxtbsy -%}
+ETXTBSY {{ self::quote(etxtbsy) }}
+{%~ endif -%}
+{%~ if let Some(efbig) = messages.efbig -%}
+EFBIG {{ self::quote(efbig) }}
+{%~ endif -%}
+{%~ if let Some(enospc) = messages.enospc -%}
+ENOSPC {{ self::quote(enospc) }}
+{%~ endif -%}
+{%~ if let Some(espipe) = messages.espipe -%}
+ESPIPE {{ self::quote(espipe) }}
+{%~ endif -%}
+{%~ if let Some(erofs) = messages.erofs -%}
+EROFS {{ self::quote(erofs) }}
+{%~ endif -%}
+{%~ if let Some(emlink) = messages.emlink -%}
+EMLINK {{ self::quote(emlink) }}
+{%~ endif -%}
+{%~ if let Some(epipe) = messages.epipe -%}
+EPIPE {{ self::quote(epipe) }}
+{%~ endif -%}
+{%~ if let Some(edom) = messages.edom -%}
+EDOM {{ self::quote(edom) }}
+{%~ endif -%}
+{%~ if let Some(erange) = messages.erange -%}
+ERANGE {{ self::quote(erange) }}
+{%~ endif -%}
+{%~ if let Some(edeadlk) = messages.edeadlk -%}
+EDEADLK {{ self::quote(edeadlk) }}
+{%~ endif -%}
+{%~ if let Some(enametoolong) = messages.enametoolong -%}
+ENAMETOOLONG {{ self::quote(enametoolong) }}
+{%~ endif -%}
+{%~ if let Some(enolck) = messages.enolck -%}
+ENOLCK {{ self::quote(enolck) }}
+{%~ endif -%}
+{%~ if let Some(enosys) = messages.enosys -%}
+ENOSYS {{ self::quote(enosys) }}
+{%~ endif -%}
+{%~ if let Some(enotempty) = messages.enotempty -%}
+ENOTEMPTY {{ self::quote(enotempty) }}
+{%~ endif -%}
+{%~ if let Some(eloop) = messages.eloop -%}
+ELOOP {{ self::quote(eloop) }}
+{%~ endif -%}
+{%~ if let Some(ewouldblock) = messages.ewouldblock -%}
+EWOULDBLOCK {{ self::quote(ewouldblock) }}
+{%~ endif -%}
+{%~ if let Some(enomsg) = messages.enomsg -%}
+ENOMSG {{ self::quote(enomsg) }}
+{%~ endif -%}
+{%~ if let Some(eidrm) = messages.eidrm -%}
+EIDRM {{ self::quote(eidrm) }}
+{%~ endif -%}
+{%~ if let Some(echrng) = messages.echrng -%}
+ECHRNG {{ self::quote(echrng) }}
+{%~ endif -%}
+{%~ if let Some(el2nsync) = messages.el2nsync -%}
+EL2NSYNC {{ self::quote(el2nsync) }}
+{%~ endif -%}
+{%~ if let Some(el3hlt) = messages.el3hlt -%}
+EL3HLT {{ self::quote(el3hlt) }}
+{%~ endif -%}
+{%~ if let Some(el3rst) = messages.el3rst -%}
+EL3RST {{ self::quote(el3rst) }}
+{%~ endif -%}
+{%~ if let Some(elnrng) = messages.elnrng -%}
+ELNRNG {{ self::quote(elnrng) }}
+{%~ endif -%}
+{%~ if let Some(eunatch) = messages.eunatch -%}
+EUNATCH {{ self::quote(eunatch) }}
+{%~ endif -%}
+{%~ if let Some(enocsi) = messages.enocsi -%}
+ENOCSI {{ self::quote(enocsi) }}
+{%~ endif -%}
+{%~ if let Some(el2hlt) = messages.el2hlt -%}
+EL2HLT {{ self::quote(el2hlt) }}
+{%~ endif -%}
+{%~ if let Some(ebade) = messages.ebade -%}
+EBADE {{ self::quote(ebade) }}
+{%~ endif -%}
+{%~ if let Some(ebadr) = messages.ebadr -%}
+EBADR {{ self::quote(ebadr) }}
+{%~ endif -%}
+{%~ if let Some(exfull) = messages.exfull -%}
+EXFULL {{ self::quote(exfull) }}
+{%~ endif -%}
+{%~ if let Some(enoano) = messages.enoano -%}
+ENOANO {{ self::quote(enoano) }}
+{%~ endif -%}
+{%~ if let Some(ebadrqc) = messages.ebadrqc -%}
+EBADRQC {{ self::quote(ebadrqc) }}
+{%~ endif -%}
+{%~ if let Some(ebadslt) = messages.ebadslt -%}
+EBADSLT {{ self::quote(ebadslt) }}
+{%~ endif -%}
+{%~ if let Some(edeadlock) = messages.edeadlock -%}
+EDEADLOCK {{ self::quote(edeadlock) }}
+{%~ endif -%}
+{%~ if let Some(ebfont) = messages.ebfont -%}
+EBFONT {{ self::quote(ebfont) }}
+{%~ endif -%}
+{%~ if let Some(enostr) = messages.enostr -%}
+ENOSTR {{ self::quote(enostr) }}
+{%~ endif -%}
+{%~ if let Some(enodata) = messages.enodata -%}
+ENODATA {{ self::quote(enodata) }}
+{%~ endif -%}
+{%~ if let Some(etime) = messages.etime -%}
+ETIME {{ self::quote(etime) }}
+{%~ endif -%}
+{%~ if let Some(enosr) = messages.enosr -%}
+ENOSR {{ self::quote(enosr) }}
+{%~ endif -%}
+{%~ if let Some(enonet) = messages.enonet -%}
+ENONET {{ self::quote(enonet) }}
+{%~ endif -%}
+{%~ if let Some(enopkg) = messages.enopkg -%}
+ENOPKG {{ self::quote(enopkg) }}
+{%~ endif -%}
+{%~ if let Some(eremote) = messages.eremote -%}
+EREMOTE {{ self::quote(eremote) }}
+{%~ endif -%}
+{%~ if let Some(enolink) = messages.enolink -%}
+ENOLINK {{ self::quote(enolink) }}
+{%~ endif -%}
+{%~ if let Some(eadv) = messages.eadv -%}
+EADV {{ self::quote(eadv) }}
+{%~ endif -%}
+{%~ if let Some(esrmnt) = messages.esrmnt -%}
+ESRMNT {{ self::quote(esrmnt) }}
+{%~ endif -%}
+{%~ if let Some(ecomm) = messages.ecomm -%}
+ECOMM {{ self::quote(ecomm) }}
+{%~ endif -%}
+{%~ if let Some(eproto) = messages.eproto -%}
+EPROTO {{ self::quote(eproto) }}
+{%~ endif -%}
+{%~ if let Some(emultihop) = messages.emultihop -%}
+EMULTIHOP {{ self::quote(emultihop) }}
+{%~ endif -%}
+{%~ if let Some(edotdot) = messages.edotdot -%}
+EDOTDOT {{ self::quote(edotdot) }}
+{%~ endif -%}
+{%~ if let Some(ebadmsg) = messages.ebadmsg -%}
+EBADMSG {{ self::quote(ebadmsg) }}
+{%~ endif -%}
+{%~ if let Some(eoverflow) = messages.eoverflow -%}
+EOVERFLOW {{ self::quote(eoverflow) }}
+{%~ endif -%}
+{%~ if let Some(enotuniq) = messages.enotuniq -%}
+ENOTUNIQ {{ self::quote(enotuniq) }}
+{%~ endif -%}
+{%~ if let Some(ebadfd) = messages.ebadfd -%}
+EBADFD {{ self::quote(ebadfd) }}
+{%~ endif -%}
+{%~ if let Some(eremchg) = messages.eremchg -%}
+EREMCHG {{ self::quote(eremchg) }}
+{%~ endif -%}
+{%~ if let Some(elibacc) = messages.elibacc -%}
+ELIBACC {{ self::quote(elibacc) }}
+{%~ endif -%}
+{%~ if let Some(elibbad) = messages.elibbad -%}
+ELIBBAD {{ self::quote(elibbad) }}
+{%~ endif -%}
+{%~ if let Some(elibscn) = messages.elibscn -%}
+ELIBSCN {{ self::quote(elibscn) }}
+{%~ endif -%}
+{%~ if let Some(elibmax) = messages.elibmax -%}
+ELIBMAX {{ self::quote(elibmax) }}
+{%~ endif -%}
+{%~ if let Some(elibexec) = messages.elibexec -%}
+ELIBEXEC {{ self::quote(elibexec) }}
+{%~ endif -%}
+{%~ if let Some(eilseq) = messages.eilseq -%}
+EILSEQ {{ self::quote(eilseq) }}
+{%~ endif -%}
+{%~ if let Some(erestart) = messages.erestart -%}
+ERESTART {{ self::quote(erestart) }}
+{%~ endif -%}
+{%~ if let Some(estrpipe) = messages.estrpipe -%}
+ESTRPIPE {{ self::quote(estrpipe) }}
+{%~ endif -%}
+{%~ if let Some(eusers) = messages.eusers -%}
+EUSERS {{ self::quote(eusers) }}
+{%~ endif -%}
+{%~ if let Some(enotsock) = messages.enotsock -%}
+ENOTSOCK {{ self::quote(enotsock) }}
+{%~ endif -%}
+{%~ if let Some(edestaddrreq) = messages.edestaddrreq -%}
+EDESTADDRREQ {{ self::quote(edestaddrreq) }}
+{%~ endif -%}
+{%~ if let Some(emsgsize) = messages.emsgsize -%}
+EMSGSIZE {{ self::quote(emsgsize) }}
+{%~ endif -%}
+{%~ if let Some(eprototype) = messages.eprototype -%}
+EPROTOTYPE {{ self::quote(eprototype) }}
+{%~ endif -%}
+{%~ if let Some(enoprotoopt) = messages.enoprotoopt -%}
+ENOPROTOOPT {{ self::quote(enoprotoopt) }}
+{%~ endif -%}
+{%~ if let Some(eprotonosupport) = messages.eprotonosupport -%}
+EPROTONOSUPPORT {{ self::quote(eprotonosupport) }}
+{%~ endif -%}
+{%~ if let Some(esocktnosupport) = messages.esocktnosupport -%}
+ESOCKTNOSUPPORT {{ self::quote(esocktnosupport) }}
+{%~ endif -%}
+{%~ if let Some(eopnotsupp) = messages.eopnotsupp -%}
+EOPNOTSUPP {{ self::quote(eopnotsupp) }}
+{%~ endif -%}
+{%~ if let Some(enotsup) = messages.enotsup -%}
+ENOTSUP {{ self::quote(enotsup) }}
+{%~ endif -%}
+{%~ if let Some(epfnosupport) = messages.epfnosupport -%}
+EPFNOSUPPORT {{ self::quote(epfnosupport) }}
+{%~ endif -%}
+{%~ if let Some(eafnosupport) = messages.eafnosupport -%}
+EAFNOSUPPORT {{ self::quote(eafnosupport) }}
+{%~ endif -%}
+{%~ if let Some(eaddrinuse) = messages.eaddrinuse -%}
+EADDRINUSE {{ self::quote(eaddrinuse) }}
+{%~ endif -%}
+{%~ if let Some(eaddrnotavail) = messages.eaddrnotavail -%}
+EADDRNOTAVAIL {{ self::quote(eaddrnotavail) }}
+{%~ endif -%}
+{%~ if let Some(enetdown) = messages.enetdown -%}
+ENETDOWN {{ self::quote(enetdown) }}
+{%~ endif -%}
+{%~ if let Some(enetunreach) = messages.enetunreach -%}
+ENETUNREACH {{ self::quote(enetunreach) }}
+{%~ endif -%}
+{%~ if let Some(enetreset) = messages.enetreset -%}
+ENETRESET {{ self::quote(enetreset) }}
+{%~ endif -%}
+{%~ if let Some(econnaborted) = messages.econnaborted -%}
+ECONNABORTED {{ self::quote(econnaborted) }}
+{%~ endif -%}
+{%~ if let Some(econnreset) = messages.econnreset -%}
+ECONNRESET {{ self::quote(econnreset) }}
+{%~ endif -%}
+{%~ if let Some(enobufs) = messages.enobufs -%}
+ENOBUFS {{ self::quote(enobufs) }}
+{%~ endif -%}
+{%~ if let Some(eisconn) = messages.eisconn -%}
+EISCONN {{ self::quote(eisconn) }}
+{%~ endif -%}
+{%~ if let Some(enotconn) = messages.enotconn -%}
+ENOTCONN {{ self::quote(enotconn) }}
+{%~ endif -%}
+{%~ if let Some(eshutdown) = messages.eshutdown -%}
+ESHUTDOWN {{ self::quote(eshutdown) }}
+{%~ endif -%}
+{%~ if let Some(etoomanyrefs) = messages.etoomanyrefs -%}
+ETOOMANYREFS {{ self::quote(etoomanyrefs) }}
+{%~ endif -%}
+{%~ if let Some(etimedout) = messages.etimedout -%}
+ETIMEDOUT {{ self::quote(etimedout) }}
+{%~ endif -%}
+{%~ if let Some(econnrefused) = messages.econnrefused -%}
+ECONNREFUSED {{ self::quote(econnrefused) }}
+{%~ endif -%}
+{%~ if let Some(ehostdown) = messages.ehostdown -%}
+EHOSTDOWN {{ self::quote(ehostdown) }}
+{%~ endif -%}
+{%~ if let Some(ehostunreach) = messages.ehostunreach -%}
+EHOSTUNREACH {{ self::quote(ehostunreach) }}
+{%~ endif -%}
+{%~ if let Some(ealready) = messages.ealready -%}
+EALREADY {{ self::quote(ealready) }}
+{%~ endif -%}
+{%~ if let Some(einprogress) = messages.einprogress -%}
+EINPROGRESS {{ self::quote(einprogress) }}
+{%~ endif -%}
+{%~ if let Some(estale) = messages.estale -%}
+ESTALE {{ self::quote(estale) }}
+{%~ endif -%}
+{%~ if let Some(euclean) = messages.euclean -%}
+EUCLEAN {{ self::quote(euclean) }}
+{%~ endif -%}
+{%~ if let Some(enotnam) = messages.enotnam -%}
+ENOTNAM {{ self::quote(enotnam) }}
+{%~ endif -%}
+{%~ if let Some(enavail) = messages.enavail -%}
+ENAVAIL {{ self::quote(enavail) }}
+{%~ endif -%}
+{%~ if let Some(eisnam) = messages.eisnam -%}
+EISNAM {{ self::quote(eisnam) }}
+{%~ endif -%}
+{%~ if let Some(eremoteio) = messages.eremoteio -%}
+EREMOTEIO {{ self::quote(eremoteio) }}
+{%~ endif -%}
+{%~ if let Some(edquot) = messages.edquot -%}
+EDQUOT {{ self::quote(edquot) }}
+{%~ endif -%}
+{%~ if let Some(enomedium) = messages.enomedium -%}
+ENOMEDIUM {{ self::quote(enomedium) }}
+{%~ endif -%}
+{%~ if let Some(emediumtype) = messages.emediumtype -%}
+EMEDIUMTYPE {{ self::quote(emediumtype) }}
+{%~ endif -%}
+{%~ if let Some(ecanceled) = messages.ecanceled -%}
+ECANCELED {{ self::quote(ecanceled) }}
+{%~ endif -%}
+{%~ if let Some(enokey) = messages.enokey -%}
+ENOKEY {{ self::quote(enokey) }}
+{%~ endif -%}
+{%~ if let Some(ekeyexpired) = messages.ekeyexpired -%}
+EKEYEXPIRED {{ self::quote(ekeyexpired) }}
+{%~ endif -%}
+{%~ if let Some(ekeyrevoked) = messages.ekeyrevoked -%}
+EKEYREVOKED {{ self::quote(ekeyrevoked) }}
+{%~ endif -%}
+{%~ if let Some(ekeyrejected) = messages.ekeyrejected -%}
+EKEYREJECTED {{ self::quote(ekeyrejected) }}
+{%~ endif -%}
+{%~ if let Some(eownerdead) = messages.eownerdead -%}
+EOWNERDEAD {{ self::quote(eownerdead) }}
+{%~ endif -%}
+{%~ if let Some(enotrecoverable) = messages.enotrecoverable -%}
+ENOTRECOVERABLE {{ self::quote(enotrecoverable) }}
+{%~ endif -%}
+{%~ if let Some(erfkill) = messages.erfkill -%}
+ERFKILL {{ self::quote(erfkill) }}
+{%~ endif -%}
+{%~ if let Some(ehwpoison) = messages.ehwpoison -%}
+EHWPOISON {{ self::quote(ehwpoison) }}
+{%~ endif -%}
+{%~ if let Some(reg__) = messages.reg__ -%}
+REG__ {{ self::quote(reg__) }}
+{%~ endif -%}
+{%~ if let Some(reg_ok) = messages.reg_ok -%}
+REG_OK {{ self::quote(reg_ok) }}
+{%~ endif -%}
+{%~ if let Some(reg_nomatch) = messages.reg_nomatch -%}
+REG_NOMATCH {{ self::quote(reg_nomatch) }}
+{%~ endif -%}
+{%~ if let Some(reg_badpat) = messages.reg_badpat -%}
+REG_BADPAT {{ self::quote(reg_badpat) }}
+{%~ endif -%}
+{%~ if let Some(reg_ecollate) = messages.reg_ecollate -%}
+REG_ECOLLATE {{ self::quote(reg_ecollate) }}
+{%~ endif -%}
+{%~ if let Some(reg_ectype) = messages.reg_ectype -%}
+REG_ECTYPE {{ self::quote(reg_ectype) }}
+{%~ endif -%}
+{%~ if let Some(reg_eescape) = messages.reg_eescape -%}
+REG_EESCAPE {{ self::quote(reg_eescape) }}
+{%~ endif -%}
+{%~ if let Some(reg_esubreg) = messages.reg_esubreg -%}
+REG_ESUBREG {{ self::quote(reg_esubreg) }}
+{%~ endif -%}
+{%~ if let Some(reg_ebrack) = messages.reg_ebrack -%}
+REG_EBRACK {{ self::quote(reg_ebrack) }}
+{%~ endif -%}
+{%~ if let Some(reg_eparen) = messages.reg_eparen -%}
+REG_EPAREN {{ self::quote(reg_eparen) }}
+{%~ endif -%}
+{%~ if let Some(reg_ebrace) = messages.reg_ebrace -%}
+REG_EBRACE {{ self::quote(reg_ebrace) }}
+{%~ endif -%}
+{%~ if let Some(reg_badbr) = messages.reg_badbr -%}
+REG_BADBR {{ self::quote(reg_badbr) }}
+{%~ endif -%}
+{%~ if let Some(reg_erange) = messages.reg_erange -%}
+REG_ERANGE {{ self::quote(reg_erange) }}
+{%~ endif -%}
+{%~ if let Some(reg_espace) = messages.reg_espace -%}
+REG_ESPACE {{ self::quote(reg_espace) }}
+{%~ endif -%}
+{%~ if let Some(reg_badrpt) = messages.reg_badrpt -%}
+REG_BADRPT {{ self::quote(reg_badrpt) }}
+{%~ endif -%}
+{%~ if let Some(eai__) = messages.eai__ -%}
+EAI__ {{ self::quote(eai__) }}
+{%~ endif -%}
+{%~ if let Some(eai_0) = messages.eai_0 -%}
+EAI_0 {{ self::quote(eai_0) }}
+{%~ endif -%}
+{%~ if let Some(eai_badflags) = messages.eai_badflags -%}
+EAI_BADFLAGS {{ self::quote(eai_badflags) }}
+{%~ endif -%}
+{%~ if let Some(eai_noname) = messages.eai_noname -%}
+EAI_NONAME {{ self::quote(eai_noname) }}
+{%~ endif -%}
+{%~ if let Some(eai_again) = messages.eai_again -%}
+EAI_AGAIN {{ self::quote(eai_again) }}
+{%~ endif -%}
+{%~ if let Some(eai_fail) = messages.eai_fail -%}
+EAI_FAIL {{ self::quote(eai_fail) }}
+{%~ endif -%}
+{%~ if let Some(eai_nodata) = messages.eai_nodata -%}
+EAI_NODATA {{ self::quote(eai_nodata) }}
+{%~ endif -%}
+{%~ if let Some(eai_family) = messages.eai_family -%}
+EAI_FAMILY {{ self::quote(eai_family) }}
+{%~ endif -%}
+{%~ if let Some(eai_socktype) = messages.eai_socktype -%}
+EAI_SOCKTYPE {{ self::quote(eai_socktype) }}
+{%~ endif -%}
+{%~ if let Some(eai_service) = messages.eai_service -%}
+EAI_SERVICE {{ self::quote(eai_service) }}
+{%~ endif -%}
+{%~ if let Some(eai_memory) = messages.eai_memory -%}
+EAI_MEMORY {{ self::quote(eai_memory) }}
+{%~ endif -%}
+{%~ if let Some(eai_system) = messages.eai_system -%}
+EAI_SYSTEM {{ self::quote(eai_system) }}
+{%~ endif -%}
+{%~ if let Some(eai_overflow) = messages.eai_overflow -%}
+EAI_OVERFLOW {{ self::quote(eai_overflow) }}
+{%~ endif -%}
+{%~ if let Some(h_) = messages.h_ -%}
+H_ {{ self::quote(h_) }}
+{%~ endif -%}
+{%~ if let Some(h0) = messages.h0 -%}
+H0 {{ self::quote(h0) }}
+{%~ endif -%}
+{%~ if let Some(host_not_found) = messages.host_not_found -%}
+HOST_NOT_FOUND {{ self::quote(host_not_found) }}
+{%~ endif -%}
+{%~ if let Some(try_again) = messages.try_again -%}
+TRY_AGAIN {{ self::quote(try_again) }}
+{%~ endif -%}
+{%~ if let Some(no_recovery) = messages.no_recovery -%}
+NO_RECOVERY {{ self::quote(no_recovery) }}
+{%~ endif -%}
+{%~ if let Some(no_data) = messages.no_data -%}
+NO_DATA {{ self::quote(no_data) }}
+{%~ endif -%}
 END LC_MESSAGES
 {%~ endif -%}
